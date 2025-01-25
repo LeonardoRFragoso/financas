@@ -14,6 +14,7 @@ import bcrypt
 import extra_streamlit_components as stx
 from pathlib import Path
 import calendar
+from datetime import date
 from io import BytesIO
 import plotly.express as px
 from dateutil.relativedelta import relativedelta
@@ -151,10 +152,14 @@ def hash_password(password):
     return bcrypt.hashpw(password.encode(), salt)
 
 def check_password(password, hashed):
+    """Verifica se a senha corresponde ao hash armazenado"""
     try:
+        # `hashed` já está no formato bytes, então não precisa de `.encode()`
         return bcrypt.checkpw(password.encode(), hashed)
-    except Exception:
+    except Exception as e:
+        print(f"Erro ao verificar senha: {str(e)}")
         return False
+
 
 def create_user(username, password):
     if not username or not password:
@@ -213,13 +218,15 @@ def login(username, password):
             # Define cookies de autenticação
             set_auth_cookie(user_id, username)
             return True
-        
-        return False
+        else:
+            st.session_state.authenticated = False
+            return False
     except Exception as e:
         print(f"Erro ao fazer login: {str(e)}")
         return False
     finally:
         conn.close()
+
 
 def logout():
     """Função para realizar logout"""
@@ -239,13 +246,13 @@ def login_page():
     st.title("Login")
     
     with st.form("login_form"):
-        username = st.text_input("Usuário", key="login_username")
-        password = st.text_input("Senha", type="password", key="login_password")
+        username = st.text_input("Usuário")
+        password = st.text_input("Senha", type="password")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.form_submit_button("Entrar"):
+            if st.form_submit_button("Entrar"):  # Removido o argumento `key`
                 if login(username, password):
                     st.success("Login realizado com sucesso!")
                     st.rerun()
@@ -253,23 +260,24 @@ def login_page():
                     st.error("Usuário ou senha inválidos")
         
         with col2:
-            if st.form_submit_button("Criar Conta"):
+            if st.form_submit_button("Criar Conta"):  # Removido o argumento `key`
                 st.session_state.page = "register"
                 st.rerun()
+
 
 def register_page():
     """Página de cadastro"""
     st.title("Criar Conta")
     
     with st.form("register_form"):
-        username = st.text_input("Usuário", key="register_username")
-        password = st.text_input("Senha", type="password", key="register_password")
-        confirm_password = st.text_input("Confirmar Senha", type="password", key="register_confirm")
+        username = st.text_input("Usuário")
+        password = st.text_input("Senha", type="password")
+        confirm_password = st.text_input("Confirmar Senha", type="password")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.form_submit_button("Cadastrar"):
+            if st.form_submit_button("Cadastrar"):  # Removido o argumento `key`
                 if password != confirm_password:
                     st.error("As senhas não conferem")
                 elif len(password) < 6:
@@ -283,7 +291,7 @@ def register_page():
                         st.error("Erro ao criar usuário. Talvez o nome já esteja em uso.")
         
         with col2:
-            if st.form_submit_button("Voltar"):
+            if st.form_submit_button("Voltar"):  # Removido o argumento `key`
                 st.session_state.page = "login"
                 st.rerun()
 
@@ -807,36 +815,59 @@ def main_interface():
     # Verifica pagamentos próximos
     check_upcoming_payments(st.session_state.user_id)
     
-    # Menu lateral
-    menu = ["Dashboard", "Transações", "Metas", "Configurações"]
-    choice = st.sidebar.selectbox("Menu", menu)
-    
-    # Carrega configurações do usuário
-    settings = load_settings(st.session_state.user_id)
-    
-    # Mostra quinzena atual
-    hoje = datetime.now()
-    quinzena_atual = calcular_quinzena(hoje)
-    st.sidebar.write(f"**Quinzena Atual:** {quinzena_atual}ª de {calendar.month_name[hoje.month]}/{hoje.year}")
-    
-    # Mostra próximas datas importantes
+    # Sidebar melhorada
+    st.sidebar.title("💰 Finanças Pessoais")
+
+    # Perfil do usuário
+    st.sidebar.markdown("### Perfil")
+    st.sidebar.write(f"**Usuário:** {st.session_state.username}")
+    st.sidebar.write(f"**Desde:** {datetime.now().strftime('%d/%m/%Y')}")  # Data simulada
     st.sidebar.markdown("---")
-    st.sidebar.write("**Datas Importantes**")
-    if quinzena_atual == 1:
-        st.sidebar.write(f"Pagamento: Dia {settings['dia_pagamento_q1']}")
-        st.sidebar.write(f"Corte: Dia {settings['dia_corte']}")
+
+    # Menus com ícones
+    menu_icons = {
+        "Dashboard": "📊",
+        "Transações": "💳",
+        "Metas": "🎯",
+        "Configurações": "⚙️"
+    }
+    menu = st.sidebar.radio("Menu", list(menu_icons.keys()), 
+                            format_func=lambda x: f"{menu_icons[x]} {x}")
+
+    # Atalhos rápidos na barra lateral
+    st.sidebar.markdown("### Atalhos")
+    if st.sidebar.button("➕ Nova Transação", key="sidebar_nova_transacao"):
+        st.session_state.page = "Transações"
+        st.rerun()
+
+    if st.sidebar.button("🎯 Nova Meta", key="sidebar_nova_meta"):
+        st.session_state.page = "Metas"
+        st.rerun()
+
+    if st.sidebar.button("Sair", key="sidebar_sair"):
+        logout()
+        st.rerun()
+
+
+
+    # Progresso das metas
+    st.sidebar.markdown("### Progresso das Metas")
+    df_metas = get_goals(st.session_state.user_id)
+    if not df_metas.empty:
+        for _, meta in df_metas.iterrows():
+            progresso = (meta['current_amount'] / meta['target_amount']) * 100
+            st.sidebar.progress(progresso / 100, text=meta['description'])
     else:
-        st.sidebar.write(f"Pagamento: Dia {settings['dia_pagamento_q2']}")
-        st.sidebar.write(f"Corte: Dia {settings['dia_corte']}")
-    
-    # Mostra menu selecionado
-    if choice == "Dashboard":
+        st.sidebar.write("Nenhuma meta cadastrada.")
+
+    # Controle de exibição de menu
+    if menu == "Dashboard":
         show_dashboard()
-    elif choice == "Transações":
+    elif menu == "Transações":
         show_transactions()
-    elif choice == "Metas":
+    elif menu == "Metas":
         show_goals()
-    elif choice == "Configurações":
+    elif menu == "Configurações":
         show_settings()
 
 def show_dashboard():
@@ -986,6 +1017,7 @@ def show_dashboard():
     else:
         st.info("Nenhuma meta cadastrada.")
 
+
 def show_transactions():
     """Mostra a página de transações"""
     st.header("Transações")
@@ -1003,8 +1035,10 @@ def show_transactions():
             with col1:
                 description = st.text_input("Descrição")
                 amount = st.number_input("Valor", min_value=0.0, step=0.01)
-                category = st.selectbox("Categoria", 
-                                      load_settings(st.session_state.user_id)['categorias'])
+                category = st.selectbox(
+                    "Categoria", 
+                    load_settings(st.session_state.user_id)['categorias']
+                )
             
             with col2:
                 type_trans = st.selectbox("Tipo", ["despesa", "receita"])
@@ -1025,8 +1059,10 @@ def show_transactions():
             if recurring:
                 col1, col2 = st.columns(2)
                 with col1:
-                    installments = st.number_input("Número de Parcelas", 
-                                                 min_value=2, max_value=12, step=1)
+                    installments = st.number_input(
+                        "Número de Parcelas", 
+                        min_value=2, max_value=12, step=1
+                    )
                 with col2:
                     priority = st.slider("Prioridade", 1, 5, 2)
             else:
@@ -1061,34 +1097,48 @@ def show_transactions():
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            mes = st.selectbox("Mês", range(1, 13), 
-                             format_func=lambda x: calendar.month_name[x])
+            mes = st.selectbox(
+                "Mês", range(1, 13), 
+                format_func=lambda x: calendar.month_name[x]
+            )
         
         with col2:
             ano = st.selectbox("Ano", range(2020, 2026))
         
         with col3:
-            quinzena = st.selectbox("Quinzena", [None, 1, 2], 
-                                  format_func=lambda x: "Todas" if x is None else f"{x}ª")
+            quinzena = st.selectbox(
+                "Quinzena", [None, 1, 2], 
+                format_func=lambda x: "Todas" if x is None else f"{x}ª"
+            )
         
         col1, col2 = st.columns(2)
         
         with col1:
-            tipo = st.selectbox("Tipo", [None, "despesa", "receita"],
-                              format_func=lambda x: "Todos" if x is None else x.title())
+            tipo = st.selectbox(
+                "Tipo", [None, "despesa", "receita"],
+                format_func=lambda x: "Todos" if x is None else x.title()
+            )
         
         with col2:
-            status_filter = st.selectbox("Status", [None, "pendente", "pago", "atrasado"],
-                                       format_func=lambda x: "Todos" if x is None else x.title())
+            status_filter = st.selectbox(
+                "Status", [None, "pendente", "pago", "atrasado"],
+                format_func=lambda x: "Todos" if x is None else x.title()
+            )
         
         # Lista de transações
         st.subheader("Suas Transações")
         
-        df = get_transactions(st.session_state.user_id, quinzena, mes, ano, tipo, status_filter)
+        df = get_transactions(
+            st.session_state.user_id, quinzena, mes, ano, tipo, status_filter
+        )
         
         if df.empty:
             st.info("Nenhuma transação encontrada")
             return
+        
+        # Converter colunas relevantes para datetime
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')  # Converte 'date' para datetime
+        df['due_date'] = pd.to_datetime(df['due_date'], errors='coerce')  # Converte 'due_date' para datetime
         
         # Exibe transações em uma tabela editável
         edited_df = st.data_editor(
@@ -1155,6 +1205,7 @@ def show_transactions():
                 for _, row in selected_rows.iterrows():
                     delete_transaction(row['id'])
                 st.rerun()
+
 
 def update_overdue_transactions():
     """Atualiza transações vencidas"""
