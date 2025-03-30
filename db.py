@@ -1,11 +1,42 @@
 import sqlite3
+from goals_db import init_goals_table
+from db_backup import backup_transactions, restore_transactions, list_backups
+import os
 
 DB_PATH = 'financas.db'
 
 # Função para inicializar o banco de dados
 def init_db():
+    # Verificar se o banco já existe e está inicializado
+    if os.path.exists(DB_PATH):
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        
+        # Verificar se as tabelas existem
+        c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {table[0] for table in c.fetchall()}
+        
+        if all(table in tables for table in ['transactions', 'categories', 'users', 'settings', 'goals']):
+            conn.close()
+            return  # Banco já está inicializado, não precisa fazer nada
+        
+        conn.close()
+
+    # Se chegou aqui, precisa inicializar o banco
+    # Fazer backup das transações existentes apenas se o arquivo existir
+    if os.path.exists(DB_PATH):
+        try:
+            backup_file = backup_transactions()
+            print(f"Backup criado em: {backup_file}")
+        except Exception as e:
+            print(f"Não foi possível fazer backup: {str(e)}")
+            backup_file = None
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
+    # Inicializar tabela de metas primeiro
+    init_goals_table()
 
     # Remover tabela categories se existir para recriar com a estrutura correta
     c.execute('DROP TABLE IF EXISTS categories')
@@ -19,10 +50,6 @@ def init_db():
                   categoria_tipo TEXT NOT NULL,
                   active BOOLEAN DEFAULT 1)''')
     conn.commit()
-    
-    # Inicializar categorias após criar as tabelas
-    from categories import initialize_categories
-    initialize_categories()
     
     # Adicionar colunas se não existirem
     try:
@@ -85,13 +112,22 @@ def init_db():
                   value TEXT NOT NULL)''')
     
     conn.commit()
-    conn.close()
     
     # Inicializar configurações depois das tabelas estarem criadas
     from settings import init_settings
-    
+    from categories import initialize_categories
+    initialize_categories()
     init_settings()
-
+    
+    # Se tiver feito backup, restaura as transações
+    if os.path.exists(DB_PATH) and 'backup_file' in locals() and backup_file:
+        try:
+            restore_transactions(backup_file)
+        except Exception as e:
+            print(f"Erro ao restaurar transações: {str(e)}")
+    
+    conn.close()
+    
 def get_transactions():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()

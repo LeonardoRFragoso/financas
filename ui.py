@@ -1,5 +1,5 @@
 import streamlit as st
-from transactions import add_transaction, view_transactions, delete_transaction, update_transaction
+from transactions_db import add_transaction, view_transactions, delete_transaction, update_transaction
 from goals import add_goal, view_goals, delete_goal
 from categories import get_categories
 import pandas as pd

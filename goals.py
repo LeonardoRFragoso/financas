@@ -12,7 +12,7 @@ from goals_db import (
 
 def show_goals():
     """Mostra a página de metas financeiras."""
-    st.title("🎯 Metas Financeiras")
+    st.title(" Metas Financeiras")
     
     # Inicializar tabela se necessário
     init_goals_table()
@@ -25,7 +25,7 @@ def show_goals():
     if st.session_state.editing_goal:
         show_goal_form()  # Mostrar formulário de edição primeiro
     else:
-        tab1, tab2 = st.tabs(["📋 Minhas Metas", "➕ Nova Meta"])
+        tab1, tab2 = st.tabs([" Minhas Metas", " Nova Meta"])
         
         with tab1:
             show_goals_list()
@@ -43,151 +43,178 @@ def show_goals_list():
     
     # Converter para DataFrame para melhor manipulação
     df = pd.DataFrame(goals)
+    
+    # Converter campos de data
     df['deadline'] = pd.to_datetime(df['deadline'])
+    df['created_at'] = pd.to_datetime(df['created_at'])
+    df['updated_at'] = pd.to_datetime(df['updated_at'])
+    
+    # Calcular progresso
     df['progress'] = (df['current_amount'] / df['target_amount'] * 100).round(2)
     
     # Visão geral em cards
-    for goal in goals:
-        with st.expander(f"📌 {goal['title']}", expanded=True):
-            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+    for _, goal in df.iterrows():
+        with st.expander(f" {goal['title']}", expanded=True):
+            col1, col2 = st.columns([3, 1])
             
             with col1:
-                st.write("**Descrição:**")
-                st.write(goal['description'] if goal['description'] else "Sem descrição")
+                st.markdown(f"**Descrição:** {goal['description'] or 'Sem descrição'}")
+                st.markdown(f"**Categoria:** {goal['category'] or 'Não definida'}")
+                st.markdown(f"**Status:** {goal['status']}")
+                if not pd.isna(goal['deadline']):
+                    st.markdown(f"**Prazo:** {goal['deadline'].strftime('%d/%m/%Y')}")
+                
+                # Barra de progresso
+                progress = min(100, goal['progress'])
+                st.progress(progress / 100)
+                st.markdown(f"**Progresso:** R$ {goal['current_amount']:,.2f} de R$ {goal['target_amount']:,.2f} ({progress:.1f}%)")
             
             with col2:
-                st.metric(
-                    "Meta",
-                    f"R$ {goal['target_amount']:,.2f}",
-                    f"R$ {goal['current_amount']:,.2f} atual"
-                )
-            
-            with col3:
-                progress = (goal['current_amount'] / goal['target_amount'] * 100)
-                st.progress(min(progress / 100, 1.0))
-                st.write(f"{progress:.1f}% concluído")
-                st.write(f"**Prazo:** {goal['deadline']}")
-            
-            with col4:
-                if st.button("✏️", key=f"edit_{goal['id']}", help="Editar meta"):
-                    st.session_state.editing_goal = goal
+                col2.markdown("### Ações")
+                
+                # Botão de editar
+                if st.button("✏️ Editar", key=f"edit_{goal['id']}"):
+                    st.session_state.editing_goal = goal.to_dict()
                     st.rerun()
                 
-                if st.button("🗑️", key=f"delete_{goal['id']}", help="Excluir meta"):
+                # Botão de excluir
+                if st.button("🗑️ Excluir", key=f"delete_{goal['id']}"):
                     if delete_goal(goal['id']):
                         st.success("Meta excluída com sucesso!")
                         st.rerun()
                     else:
                         st.error("Erro ao excluir meta.")
-    
-    # Gráfico de progresso
-    st.subheader("Visão Geral do Progresso")
-    fig = px.bar(
-        df,
-        x='title',
-        y=['current_amount', 'target_amount'],
-        title='Progresso das Metas',
-        barmode='overlay',
-        labels={
-            'title': 'Meta',
-            'value': 'Valor (R$)',
-            'variable': 'Tipo'
-        }
-    )
-    st.plotly_chart(fig, use_container_width=True)
 
 def show_goal_form():
     """Mostra o formulário para adicionar/editar uma meta."""
+    # Determinar se estamos editando ou criando
     editing = st.session_state.editing_goal is not None
-    goal = st.session_state.editing_goal if editing else {}
+    title = "✏️ Editar Meta" if editing else "➕ Nova Meta"
     
-    # Botão para cancelar edição
-    if editing:
-        if st.button("← Voltar para lista"):
-            st.session_state.editing_goal = None
-            st.rerun()
+    if editing and not st.sidebar.checkbox("Continuar Editando", value=True):
+        st.session_state.editing_goal = None
+        st.rerun()
     
-    st.subheader("🎯 " + ("Editar Meta" if editing else "Nova Meta"))
-    
-    with st.form("goal_form", clear_on_submit=not editing):
-        title = st.text_input(
-            "Título da Meta *",
-            value=goal.get('title', '')
+    # Formulário
+    with st.form(key="goal_form", clear_on_submit=True):
+        st.subheader(title)
+        
+        # Campos do formulário
+        goal_data = {}
+        
+        goal_data['title'] = st.text_input(
+            "Título*",
+            value=st.session_state.editing_goal.get('title', '') if editing else ''
         )
         
-        description = st.text_area(
+        goal_data['description'] = st.text_area(
             "Descrição",
-            value=goal.get('description', '')
+            value=st.session_state.editing_goal.get('description', '') if editing else ''
         )
         
         col1, col2 = st.columns(2)
         
         with col1:
-            target_amount = st.number_input(
-                "Valor da Meta *",
+            goal_data['target_amount'] = st.number_input(
+                "Valor Alvo*",
                 min_value=0.0,
-                value=float(goal.get('target_amount', 0)),
-                step=100.0,
-                format="%.2f"
-            )
-            
-            current_amount = st.number_input(
-                "Valor Atual",
-                min_value=0.0,
-                max_value=float(target_amount),
-                value=float(goal.get('current_amount', 0)),
+                value=float(st.session_state.editing_goal.get('target_amount', 0)) if editing else 0.0,
                 step=100.0,
                 format="%.2f"
             )
         
         with col2:
-            category = st.selectbox(
+            goal_data['current_amount'] = st.number_input(
+                "Valor Atual",
+                min_value=0.0,
+                max_value=float(goal_data['target_amount']) if goal_data['target_amount'] > 0 else None,
+                value=float(st.session_state.editing_goal.get('current_amount', 0)) if editing else 0.0,
+                step=100.0,
+                format="%.2f"
+            )
+        
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            goal_data['category'] = st.selectbox(
                 "Categoria",
-                ["Investimento", "Reserva", "Viagem", "Compra", "Outro"],
-                index=0 if not goal.get('category') else ["Investimento", "Reserva", "Viagem", "Compra", "Outro"].index(goal['category'])
-            )
-            
-            deadline = st.date_input(
-                "Data Limite",
-                min_value=date.today(),
-                value=datetime.strptime(goal.get('deadline', date.today().strftime('%Y-%m-%d')), '%Y-%m-%d').date()
+                options=['Reserva', 'Viagem', 'Educação', 'Investimento', 'Compra', 'Outro'],
+                index=['Reserva', 'Viagem', 'Educação', 'Investimento', 'Compra', 'Outro'].index(
+                    st.session_state.editing_goal.get('category', 'Outro')
+                ) if editing and st.session_state.editing_goal.get('category') else 0
             )
         
-        status = st.selectbox(
-            "Status",
-            ["Em Andamento", "Concluída", "Cancelada"],
-            index=0 if not goal.get('status') else ["Em Andamento", "Concluída", "Cancelada"].index(goal['status'])
-        )
+        with col4:
+            goal_data['status'] = st.selectbox(
+                "Status",
+                options=['Em Andamento', 'Concluída', 'Cancelada'],
+                index=['Em Andamento', 'Concluída', 'Cancelada'].index(
+                    st.session_state.editing_goal.get('status', 'Em Andamento')
+                ) if editing else 0
+            )
         
-        submitted = st.form_submit_button(
-            "💾 Salvar" if editing else "➕ Adicionar"
-        )
+        # Tratamento especial para a data limite
+        try:
+            default_date = None
+            if editing and st.session_state.editing_goal.get('deadline'):
+                default_date = datetime.strptime(
+                    st.session_state.editing_goal['deadline'],
+                    '%Y-%m-%d'
+                ).date()
+        except (ValueError, TypeError):
+            default_date = None
         
-        if submitted:
-            if not title or target_amount <= 0:
-                st.error("Por favor, preencha todos os campos obrigatórios.")
-                return
-            
-            goal_data = {
-                'title': title,
-                'description': description,
-                'target_amount': target_amount,
-                'current_amount': current_amount,
-                'category': category,
-                'deadline': deadline.strftime('%Y-%m-%d'),
-                'status': status
-            }
-            
-            if editing:
-                if update_goal(goal['id'], goal_data):
-                    st.success("Meta atualizada com sucesso!")
-                    st.session_state.editing_goal = None
-                    st.rerun()
+        deadline = st.date_input(
+            "Prazo",
+            value=default_date,
+            min_value=date.today()
+        )
+        if deadline:
+            goal_data['deadline'] = deadline.strftime('%Y-%m-%d')
+        
+        # Botões
+        col5, col6 = st.columns(2)
+        
+        with col5:
+            submit = st.form_submit_button(
+                "💾 Salvar" if editing else "➕ Adicionar",
+                type="primary"
+            )
+        
+        with col6:
+            if editing and st.form_submit_button("❌ Cancelar"):
+                st.session_state.editing_goal = None
+                st.rerun()
+        
+        if submit:
+            try:
+                # Validar campos obrigatórios
+                if not goal_data.get('title'):
+                    st.error("O título é obrigatório.")
+                    return
+                
+                if goal_data.get('target_amount', 0) <= 0:
+                    st.error("O valor alvo deve ser maior que zero.")
+                    return
+                
+                if editing:
+                    # Atualizar meta existente
+                    if update_goal(st.session_state.editing_goal['id'], goal_data):
+                        st.success("Meta atualizada com sucesso!")
+                        st.session_state.editing_goal = None
+                        st.rerun()
+                    else:
+                        st.error("Erro ao atualizar meta.")
                 else:
-                    st.error("Erro ao atualizar meta.")
-            else:
-                if add_goal(goal_data):
-                    st.success("Meta adicionada com sucesso!")
-                    st.rerun()
-                else:
-                    st.error("Erro ao adicionar meta.")
+                    # Adicionar nova meta
+                    goal_id = add_goal(goal_data)
+                    if goal_id:
+                        st.success("Meta adicionada com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Erro ao adicionar meta.")
+            except ValueError as e:
+                st.error(f"Erro de validação: {str(e)}")
+            except Exception as e:
+                st.error(f"Erro inesperado: {str(e)}")
+                raise

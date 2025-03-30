@@ -33,14 +33,18 @@ def add_goal(goal_data: Dict) -> int:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
+    # Garantir que todos os campos obrigatórios estejam presentes
+    if not all(key in goal_data for key in ['title', 'target_amount']):
+        raise ValueError("Título e valor alvo são obrigatórios")
+    
     c.execute('''INSERT INTO goals (
         title, description, target_amount, current_amount, 
         deadline, category, status
     ) VALUES (?, ?, ?, ?, ?, ?, ?)''', (
         goal_data['title'],
         goal_data.get('description', ''),
-        goal_data['target_amount'],
-        goal_data.get('current_amount', 0),
+        float(goal_data['target_amount']),  # Garantir que é float
+        float(goal_data.get('current_amount', 0)),  # Garantir que é float
         goal_data.get('deadline'),
         goal_data.get('category'),
         goal_data.get('status', 'Em Andamento')
@@ -56,19 +60,46 @@ def update_goal(goal_id: int, goal_data: Dict) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
-    # Construir a query de atualização dinamicamente
+    # Construir a query de update dinamicamente
     update_fields = []
     values = []
-    for key, value in goal_data.items():
-        if key not in ['id', 'created_at']:
-            update_fields.append(f"{key} = ?")
-            values.append(value)
     
-    # Adicionar updated_at
-    update_fields.append("updated_at = CURRENT_TIMESTAMP")
+    if 'title' in goal_data:
+        update_fields.append('title = ?')
+        values.append(goal_data['title'])
     
-    # Montar e executar a query
-    query = f"UPDATE goals SET {', '.join(update_fields)} WHERE id = ?"
+    if 'description' in goal_data:
+        update_fields.append('description = ?')
+        values.append(goal_data['description'])
+    
+    if 'target_amount' in goal_data:
+        update_fields.append('target_amount = ?')
+        values.append(float(goal_data['target_amount']))
+    
+    if 'current_amount' in goal_data:
+        update_fields.append('current_amount = ?')
+        values.append(float(goal_data['current_amount']))
+    
+    if 'deadline' in goal_data:
+        update_fields.append('deadline = ?')
+        values.append(goal_data['deadline'])
+    
+    if 'category' in goal_data:
+        update_fields.append('category = ?')
+        values.append(goal_data['category'])
+    
+    if 'status' in goal_data:
+        update_fields.append('status = ?')
+        values.append(goal_data['status'])
+    
+    update_fields.append('updated_at = CURRENT_TIMESTAMP')
+    
+    if not update_fields:
+        conn.close()
+        return False
+    
+    query = f'''UPDATE goals SET {', '.join(update_fields)}
+                WHERE id = ?'''
     values.append(goal_id)
     
     c.execute(query, values)
@@ -83,7 +114,7 @@ def delete_goal(goal_id: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
-    c.execute("DELETE FROM goals WHERE id = ?", (goal_id,))
+    c.execute('DELETE FROM goals WHERE id = ?', (goal_id,))
     success = c.rowcount > 0
     
     conn.commit()
@@ -93,55 +124,54 @@ def delete_goal(goal_id: int) -> bool:
 def view_goals() -> List[Dict]:
     """Retorna todas as metas cadastradas."""
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # Permite acessar colunas pelo nome
     c = conn.cursor()
     
-    c.execute('''SELECT id, title, description, target_amount, current_amount,
+    try:
+        c.execute('''SELECT id, title, description, target_amount, current_amount,
                         deadline, category, status, created_at, updated_at
-                 FROM goals ORDER BY created_at DESC''')
+                    FROM goals ORDER BY created_at DESC''')
+        
+        # Converter para lista de dicionários
+        goals = [dict(row) for row in c.fetchall()]
+        
+        # Converter valores numéricos para float
+        for goal in goals:
+            goal['target_amount'] = float(goal['target_amount'])
+            goal['current_amount'] = float(goal['current_amount'])
+        
+        return goals
     
-    goals = []
-    for row in c.fetchall():
-        goals.append({
-            'id': row[0],
-            'title': row[1],
-            'description': row[2],
-            'target_amount': row[3],
-            'current_amount': row[4],
-            'deadline': row[5],
-            'category': row[6],
-            'status': row[7],
-            'created_at': row[8],
-            'updated_at': row[9]
-        })
+    except Exception as e:
+        print(f"Erro ao buscar metas: {str(e)}")
+        return []
     
-    conn.close()
-    return goals
+    finally:
+        conn.close()
 
 def get_goal(goal_id: int) -> Optional[Dict]:
     """Retorna uma meta específica pelo ID."""
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
     
-    c.execute('''SELECT id, title, description, target_amount, current_amount,
+    try:
+        c.execute('''SELECT id, title, description, target_amount, current_amount,
                         deadline, category, status, created_at, updated_at
-                 FROM goals WHERE id = ?''', (goal_id,))
+                    FROM goals WHERE id = ?''', (goal_id,))
+        
+        row = c.fetchone()
+        if row:
+            goal = dict(row)
+            goal['target_amount'] = float(goal['target_amount'])
+            goal['current_amount'] = float(goal['current_amount'])
+            return goal
+        
+        return None
     
-    row = c.fetchone()
-    if row:
-        goal = {
-            'id': row[0],
-            'title': row[1],
-            'description': row[2],
-            'target_amount': row[3],
-            'current_amount': row[4],
-            'deadline': row[5],
-            'category': row[6],
-            'status': row[7],
-            'created_at': row[8],
-            'updated_at': row[9]
-        }
-    else:
-        goal = None
+    except Exception as e:
+        print(f"Erro ao buscar meta {goal_id}: {str(e)}")
+        return None
     
-    conn.close()
-    return goal
+    finally:
+        conn.close()

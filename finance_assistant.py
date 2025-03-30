@@ -5,7 +5,7 @@ import sqlite3
 import json
 from openai import OpenAI
 from db import DB_PATH
-from transactions import view_transactions
+from transactions_db import view_transactions
 from categories import get_categories
 
 # Configuração da API OpenAI usando st.secrets
