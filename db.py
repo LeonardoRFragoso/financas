@@ -2,11 +2,36 @@ import sqlite3
 from goals_db import init_goals_table
 from db_backup import backup_transactions, restore_transactions, list_backups
 import os
+import streamlit as st
+
+# Importar a nova integração com Supabase
+from supabase_db import (
+    init_supabase_tables, get_transactions as supabase_get_transactions,
+    migrate_data_from_sqlite
+)
 
 DB_PATH = 'financas.db'
 
+# Flag para controlar qual banco de dados usar
+def use_supabase():
+    """Determina se deve usar Supabase ou SQLite"""
+    try:
+        # Verificar se as credenciais do Supabase estão configuradas
+        if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
+            return True
+        return False
+    except:
+        return False
+
 # Função para inicializar o banco de dados
 def init_db():
+    """Inicializa o banco de dados (SQLite ou Supabase)"""
+    if use_supabase():
+        # Inicializar tabelas no Supabase
+        init_supabase_tables()
+        return
+        
+    # Código original para SQLite
     # Verificar se o banco já existe e está inicializado
     if os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
@@ -129,6 +154,11 @@ def init_db():
     conn.close()
     
 def get_transactions():
+    """Obtém transações do banco ativo (SQLite ou Supabase)"""
+    if use_supabase():
+        return supabase_get_transactions()
+    
+    # Código original para SQLite
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''SELECT id, user_id, description, amount, category, date,
@@ -140,3 +170,12 @@ def get_transactions():
     transactions = c.fetchall()
     conn.close()
     return transactions
+
+# Função para migrar dados do SQLite para o Supabase
+def migrate_to_supabase():
+    """Migra todos os dados do SQLite local para o Supabase"""
+    if not use_supabase():
+        st.error("As credenciais do Supabase não estão configuradas.")
+        return False
+        
+    return migrate_data_from_sqlite(DB_PATH)
