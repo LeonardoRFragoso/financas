@@ -10,3 +10,4 @@ python-dotenv>=1.0.0
 openpyxl>=3.1.0  # Para exportação Excel
 xlrd>=2.0.0      # Para importação Excel
 supabase>=0.7.1  # Biblioteca para integração com Supabase
+openai>=1.0.0    # Biblioteca para integração com OpenAI
