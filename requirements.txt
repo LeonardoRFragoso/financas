@@ -9,4 +9,4 @@ reportlab>=4.0.0
 python-dotenv>=1.0.0
 openpyxl>=3.1.0  # Para exportação Excel
 xlrd>=2.0.0      # Para importação Excel
-supabase-py>=0.0.2  # Biblioteca para integração com Supabase
+supabase>=0.7.1  # Biblioteca para integração com Supabase
