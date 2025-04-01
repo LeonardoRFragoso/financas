@@ -29,69 +29,58 @@ def calculate_summary(transactions):
     saldo = receitas - despesas
     
     # Agregação por categoria
-    por_categoria = df.groupby(['category', 'type'])['amount'].sum().reset_index()
+    por_categoria = {}
+    df_despesas = df[df['type'] == 'despesa']
     
-    # Cálculos para a regra 50/30/20
+    if not df_despesas.empty:
+        categorias = df_despesas.groupby('category')['amount'].sum().to_dict()
+        for cat, valor in categorias.items():
+            por_categoria[cat] = valor
+    
+    # Cálculo de investimentos
+    investimentos = 0
+    if 'categoria_tipo' in df.columns:
+        df_investimentos = df[(df['type'] == 'despesa') & (df['categoria_tipo'] == 'Investimento')]
+        if not df_investimentos.empty:
+            investimentos = df_investimentos['amount'].sum()
+    
+    # Regra 50/30/20
+    # 50% Necessidades, 30% Desejos, 20% Investimentos/Poupança
     regra_50_30_20 = {
-        "necessidades": df[(df['type'] == 'despesa') & (df['categoria_tipo'] == 'necessidade')]['amount'].sum(),
-        "desejos": df[(df['type'] == 'despesa') & (df['categoria_tipo'] == 'desejo')]['amount'].sum(),
-        "poupanca": df[(df['type'] == 'despesa') & (df['categoria_tipo'] == 'poupanca')]['amount'].sum(),
-        "outros": df[(df['type'] == 'despesa') & (df['categoria_tipo'] == 'outros')]['amount'].sum()
+        "Necessidades": 0,
+        "Desejos": 0,
+        "Investimentos": investimentos
     }
     
-    # Calcular percentuais em relação à renda
-    if receitas > 0:
-        regra_50_30_20["necessidades_ideal"] = receitas * 0.5
-        regra_50_30_20["desejos_ideal"] = receitas * 0.3
-        regra_50_30_20["poupanca_ideal"] = receitas * 0.2
+    if 'categoria_tipo' in df.columns:
+        df_necessidades = df[(df['type'] == 'despesa') & (df['categoria_tipo'] == 'Necessidade')]
+        if not df_necessidades.empty:
+            regra_50_30_20["Necessidades"] = df_necessidades['amount'].sum()
         
-        regra_50_30_20["necessidades_percentual"] = (regra_50_30_20["necessidades"] / receitas) * 100
-        regra_50_30_20["desejos_percentual"] = (regra_50_30_20["desejos"] / receitas) * 100
-        regra_50_30_20["poupanca_percentual"] = (regra_50_30_20["poupanca"] / receitas) * 100
-        regra_50_30_20["outros_percentual"] = (regra_50_30_20["outros"] / receitas) * 100
-    else:
-        # Valores padrão caso não haja receita
-        regra_50_30_20.update({
-            "necessidades_ideal": 0,
-            "desejos_ideal": 0,
-            "poupanca_ideal": 0,
-            "necessidades_percentual": 0,
-            "desejos_percentual": 0,
-            "poupanca_percentual": 0,
-            "outros_percentual": 0
-        })
+        df_desejos = df[(df['type'] == 'despesa') & (df['categoria_tipo'] == 'Desejo')]
+        if not df_desejos.empty:
+            regra_50_30_20["Desejos"] = df_desejos['amount'].sum()
     
     return {
         "receitas": receitas,
         "despesas": despesas,
-        "saldo": saldo,
-        "dataframe": df,
+        "saldo_mes": saldo,
+        "investimentos": investimentos,
         "por_categoria": por_categoria,
         "regra_50_30_20": regra_50_30_20
     }
 
-def get_streamlit_theme():
-    """Detecta se o tema atual do Streamlit é escuro ou claro."""
-    # Streamlit não fornece uma API direta para detectar o tema
-    # Então vamos usar uma solução alternativa com local storage e JS
-    theme_detector = """
-    <script>
-    const theme = window.localStorage.getItem('theme');
-    const isDark = theme === 'dark';
-    window.parent.postMessage({
-        type: 'streamlit:setComponentValue',
-        value: isDark
-    }, '*');
-    </script>
-    """
-    is_dark = st.components.v1.html(theme_detector, height=0, width=0)
-    return "dark" if is_dark else "light"
-
-def get_theme_colors():
-    """Retorna um conjunto de cores baseado no tema atual."""
-    is_dark = get_streamlit_theme() == "dark"
-    
-    if is_dark:
+# Função para obter cores baseadas na configuração do tema
+def get_theme_colors(use_dark_theme=None):
+    """Retorna um conjunto de cores baseado no tema definido."""
+    # Se o tema não for especificado, verificar a configuração
+    if use_dark_theme is None:
+        # Inicializar a configuração se não existir
+        if 'use_dark_theme' not in st.session_state:
+            st.session_state.use_dark_theme = False
+        use_dark_theme = st.session_state.use_dark_theme
+        
+    if use_dark_theme:
         return {
             'background': '#1e2126',
             'paper_bgcolor': '#1e2126',
@@ -194,108 +183,130 @@ def create_budget_comparison_chart(actual, ideal, labels):
 
 def get_monthly_summary(month=None, year=None):
     """Obtém um resumo das transações do mês"""
+    # Se mês ou ano não forem fornecidos, usar o mês e ano atual
     if month is None:
         month = datetime.now().month
     if year is None:
         year = datetime.now().year
     
-    conn = sqlite3.connect('financas.db')
-    c = conn.cursor()
+    # Formatar como strings para a consulta SQL
+    month_str = str(month).zfill(2)
+    year_str = str(year)
     
-    # Receitas pagas do mês
-    c.execute('''SELECT COALESCE(SUM(amount), 0) 
-                 FROM transactions 
-                 WHERE LOWER(type) = 'receita' 
-                 AND LOWER(status) = 'pago'
-                 AND strftime('%Y-%m', date) = ?''',
-              (f"{year:04d}-{month:02d}",))
-    receitas = c.fetchone()[0] or 0
+    # Data inicial e final para o período
+    start_date = f"{year_str}-{month_str}-01"
     
-    # Todas as despesas pagas do mês
-    c.execute('''SELECT COALESCE(SUM(amount), 0) 
-                 FROM transactions 
-                 WHERE LOWER(type) = 'despesa'
-                 AND LOWER(status) = 'pago'
-                 AND strftime('%Y-%m', date) = ?''',
-              (f"{year:04d}-{month:02d}",))
-    despesas = c.fetchone()[0] or 0
+    # Determinar a data final com base no mês
+    if month == 12:
+        end_date = f"{year_str + 1}-01-01"
+    else:
+        end_date = f"{year_str}-{str(month + 1).zfill(2)}-01"
     
-    # Investimentos pagos do mês
-    c.execute('''SELECT COALESCE(SUM(amount), 0) 
-                 FROM transactions 
-                 WHERE LOWER(type) = 'investimento'
-                 AND LOWER(status) = 'pago'
-                 AND strftime('%Y-%m', date) = ?''',
-              (f"{year:04d}-{month:02d}",))
-    investimentos = c.fetchone()[0] or 0
-    
-    conn.close()
-    
-    return {
-        'receitas': receitas,
-        'despesas': despesas,
-        'investimentos': investimentos or 0,
-        'saldo_mes': receitas - despesas - investimentos
-    }
+    # Consultar as transações do período
+    try:
+        # Conectar ao banco de dados
+        conn = sqlite3.connect('financas.db')
+        cursor = conn.cursor()
+        
+        # Obter todas as transações do período
+        cursor.execute("""
+            SELECT * FROM transactions 
+            WHERE date >= ? AND date < ?
+        """, (start_date, end_date))
+        
+        transactions = cursor.fetchall()
+        conn.close()
+        
+        # Calcular o resumo
+        summary = calculate_summary(transactions)
+        
+        return summary
+    except Exception as e:
+        st.error(f"Erro ao obter resumo mensal: {e}")
+        return {
+            "receitas": 0,
+            "despesas": 0,
+            "saldo_mes": 0,
+            "investimentos": 0,
+            "por_categoria": {},
+            "regra_50_30_20": {"Necessidades": 0, "Desejos": 0, "Investimentos": 0}
+        }
 
 def get_balance():
-    """Calcula o saldo atual considerando todas as transações pagas"""
-    conn = sqlite3.connect('financas.db')
-    c = conn.cursor()
-    
-    # Receitas pagas
-    c.execute('''SELECT COALESCE(SUM(amount), 0) 
-                 FROM transactions 
-                 WHERE LOWER(type) = 'receita' AND LOWER(status) = 'pago' ''')
-    total_receitas = c.fetchone()[0] or 0
-    
-    # Todas as despesas pagas
-    c.execute('''SELECT COALESCE(SUM(amount), 0) 
-                 FROM transactions 
-                 WHERE LOWER(type) = 'despesa' AND LOWER(status) = 'pago' ''')
-    total_despesas = c.fetchone()[0] or 0
-    
-    # Investimentos pagos
-    c.execute('''SELECT COALESCE(SUM(amount), 0) 
-                 FROM transactions 
-                 WHERE LOWER(type) = 'investimento' AND LOWER(status) = 'pago' ''')
-    total_investimentos = c.fetchone()[0] or 0
-    
-    # Saldo em conta (receitas - despesas - investimentos)
-    saldo_conta = total_receitas - total_despesas - total_investimentos
-    
-    conn.close()
-    return {
-        'saldo_conta': saldo_conta,
-        'total_investido': total_investimentos,
-        'patrimonio_total': saldo_conta + total_investimentos,
-        'total_receitas': total_receitas,
-        'total_despesas': total_despesas
-    }
+    """Calcula o saldo atual"""
+    try:
+        # Conectar ao banco de dados
+        conn = sqlite3.connect('financas.db')
+        cursor = conn.cursor()
+        
+        # Saldo em conta (receitas - despesas pago)
+        cursor.execute("""
+            SELECT 
+                SUM(CASE WHEN type = 'Receita' AND status = 'pago' THEN amount ELSE 0 END) - 
+                SUM(CASE WHEN type = 'Despesa' AND status = 'pago' AND categoria_tipo != 'Investimento' THEN amount ELSE 0 END)
+            FROM transactions
+        """)
+        
+        saldo_conta = cursor.fetchone()[0] or 0
+        
+        # Total investido
+        cursor.execute("""
+            SELECT SUM(amount)
+            FROM transactions
+            WHERE type = 'Despesa' AND categoria_tipo = 'Investimento' AND status = 'pago'
+        """)
+        
+        total_investido = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
+        return {
+            "saldo_conta": saldo_conta,
+            "total_investido": total_investido,
+            "patrimonio_total": saldo_conta + total_investido
+        }
+    except Exception as e:
+        st.error(f"Erro ao calcular saldo: {e}")
+        return {"saldo_conta": 0, "total_investido": 0, "patrimonio_total": 0}
 
 def get_expense_distribution():
     """Retorna a distribuição de despesas por categoria"""
-    conn = sqlite3.connect('financas.db')
-    c = conn.cursor()
-    
-    c.execute("""
-        SELECT category, COALESCE(SUM(amount), 0) as total
-        FROM transactions
-        WHERE LOWER(type) = 'despesa'
-        GROUP BY category
-        ORDER BY total DESC
-    """)
-    
-    results = c.fetchall()
-    conn.close()
-    
-    if not results:
-        return None
-    
-    return {category: amount for category, amount in results}
+    try:
+        conn = sqlite3.connect('financas.db')
+        cursor = conn.cursor()
+        
+        # Obter categorias e valores
+        cursor.execute("""
+            SELECT category, SUM(amount)
+            FROM transactions
+            WHERE type = 'Despesa'
+            GROUP BY category
+            ORDER BY SUM(amount) DESC
+        """)
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        # Convertendo para dicionário
+        categorias = {}
+        for cat, valor in results:
+            categorias[cat] = valor
+            
+        return categorias
+    except Exception as e:
+        st.error(f"Erro ao obter distribuição de gastos: {e}")
+        return {}
 
 def show_dashboard():
     st.title("Dashboard Financeiro")
+    
+    # Configuração de tema para gráficos
+    col_theme1, col_theme2 = st.columns([2, 3])
+    with col_theme1:
+        if st.toggle("Usar tema escuro para gráficos", value=st.session_state.get('use_dark_theme', False)):
+            st.session_state.use_dark_theme = True
+        else:
+            st.session_state.use_dark_theme = False
     
     # Obter dados do mês atual
     summary = get_monthly_summary()
@@ -348,7 +359,7 @@ def show_dashboard():
             fig_pizza = go.Figure(data=[
                 go.Pie(labels=list(categorias_valores.keys()),
                       values=list(categorias_valores.values()),
-                      marker=dict(colors=px.colors.sequential.Viridis))
+                      marker=dict(colors=px.colors.sequential[theme_colors['colorscale']]))
             ])
             fig_pizza.update_layout(
                 showlegend=True,
@@ -360,87 +371,65 @@ def show_dashboard():
     
     # Regra 50/30/20
     st.subheader("Orçamento 50/30/20")
-    st.write("Como funciona a regra 50/30/20?")
-    st.write("Esta regra sugere dividir sua renda mensal da seguinte forma:")
-    
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
-        st.info("50% para necessidades básicas")
-    with col2:
-        st.info("30% para desejos/gastos pessoais")
-    with col3:
-        st.info("20% para poupança e investimentos")
+        # Cálculo da regra 50/30/20 ideal
+        receita_total = summary['receitas']
+        regra_ideal = {
+            "Necessidades": receita_total * 0.5,
+            "Desejos": receita_total * 0.3,
+            "Investimentos": receita_total * 0.2
+        }
+        
+        # Valores reais
+        regra_real = summary['regra_50_30_20']
+        
+        # Mostrar comparação visual
+        st.text("Comparação Ideal vs Real (R$)")
+        
+        # Tabela de comparação
+        data = {
+            "Categoria": list(regra_ideal.keys()),
+            "Ideal (R$)": [f"R$ {v:,.2f}" for v in regra_ideal.values()],
+            "Real (R$)": [f"R$ {regra_real.get(k, 0):,.2f}" for k in regra_ideal.keys()],
+            "% da Receita": [f"{(regra_real.get(k, 0) / receita_total * 100 if receita_total > 0 else 0):,.1f}%" for k in regra_ideal.keys()]
+        }
+        
+        # Mostrar como DataFrame
+        df_comparacao = pd.DataFrame(data)
+        st.dataframe(df_comparacao)
     
-    # Verificar se existem receitas
-    if balance['total_receitas'] > 0:
-        # Calcular valores ideais
-        necessidades_ideal = balance['total_receitas'] * 0.5
-        desejos_ideal = balance['total_receitas'] * 0.3
-        poupanca_ideal = balance['total_receitas'] * 0.2
-        
-        # Obter valores reais
-        c = sqlite3.connect('financas.db')
-        cursor = c.cursor()
-        
-        # Necessidades (despesas com categoria_tipo = 'necessidade')
-        cursor.execute('''
-            SELECT COALESCE(SUM(amount), 0)
-            FROM transactions
-            WHERE LOWER(type) = 'despesa'
-            AND LOWER(categoria_tipo) = 'necessidade'
-            AND LOWER(status) = 'pago'
-        ''')
-        necessidades_real = cursor.fetchone()[0] or 0
-        
-        # Desejos (despesas com categoria_tipo = 'desejo')
-        cursor.execute('''
-            SELECT COALESCE(SUM(amount), 0)
-            FROM transactions
-            WHERE LOWER(type) = 'despesa'
-            AND LOWER(categoria_tipo) = 'desejo'
-            AND LOWER(status) = 'pago'
-        ''')
-        desejos_real = cursor.fetchone()[0] or 0
-        
-        # Poupança (investimentos + despesas com categoria_tipo = 'poupanca')
-        cursor.execute('''
-            SELECT COALESCE(SUM(amount), 0)
-            FROM transactions
-            WHERE (LOWER(type) = 'investimento' OR (LOWER(type) = 'despesa' AND LOWER(categoria_tipo) = 'poupanca'))
-            AND LOWER(status) = 'pago'
-        ''')
-        poupanca_real = cursor.fetchone()[0] or 0
-        
-        c.close()
-        
-        # Criar gráfico de comparação
-        fig = go.Figure(data=[
-            go.Bar(name='Real', x=['Necessidades', 'Desejos', 'Poupança'],
-                  y=[necessidades_real, desejos_real, poupanca_real]),
-            go.Bar(name='Ideal', x=['Necessidades', 'Desejos', 'Poupança'],
-                  y=[necessidades_ideal, desejos_ideal, poupanca_ideal])
+    with col2:
+        # Gráfico de barras comparativo
+        if receita_total > 0:
+            fig = create_budget_comparison_chart(
+                [regra_real.get(k, 0) for k in regra_ideal.keys()],
+                list(regra_ideal.values()),
+                list(regra_ideal.keys())
+            )
+            st.plotly_chart(fig, use_container_width=True, key="orcamento_chart")
+        else:
+            st.info("Sem receitas neste mês para comparar com o orçamento ideal.")
+    
+    # Resumo por categoria
+    st.subheader("Despesas por Categoria")
+    
+    if summary['por_categoria']:
+        # Criar DataFrame para visualização
+        df_categorias = pd.DataFrame([
+            {"Categoria": k, "Valor": v}
+            for k, v in summary['por_categoria'].items()
         ])
         
-        fig.update_layout(barmode='group',
-                         title='Comparação Real vs Ideal',
-                         yaxis_title='Valor (R$)')
+        # Ordenar por valor
+        df_categorias = df_categorias.sort_values("Valor", ascending=False)
         
-        st.plotly_chart(fig, use_container_width=True)
+        # Mostrar como DataFrame
+        st.dataframe(df_categorias)
         
-        # Mostrar percentuais
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            percentual = (necessidades_real / balance['total_receitas']) * 100 if balance['total_receitas'] > 0 else 0
-            st.metric("Necessidades", f"{percentual:.1f}%", f"{50 - percentual:.1f}%")
-        
-        with col2:
-            percentual = (desejos_real / balance['total_receitas']) * 100 if balance['total_receitas'] > 0 else 0
-            st.metric("Desejos", f"{percentual:.1f}%", f"{30 - percentual:.1f}%")
-        
-        with col3:
-            percentual = (poupanca_real / balance['total_receitas']) * 100 if balance['total_receitas'] > 0 else 0
-            st.metric("Poupança", f"{percentual:.1f}%", f"{20 - percentual:.1f}%")
+        # Gráfico de barras
+        fig = create_bar_chart(df_categorias, "Categoria", "Valor", "Despesas por Categoria")
+        st.plotly_chart(fig, use_container_width=True, key="categorias_chart")
     else:
-        st.warning("Nenhuma receita registrada ainda.")
+        st.info("Sem despesas neste mês para mostrar as categorias.")
