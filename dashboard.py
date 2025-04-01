@@ -70,32 +70,124 @@ def calculate_summary(transactions):
         "regra_50_30_20": regra_50_30_20
     }
 
+def get_streamlit_theme():
+    """Detecta se o tema atual do Streamlit é escuro ou claro."""
+    # Streamlit não fornece uma API direta para detectar o tema
+    # Então vamos usar uma solução alternativa com local storage e JS
+    theme_detector = """
+    <script>
+    const theme = window.localStorage.getItem('theme');
+    const isDark = theme === 'dark';
+    window.parent.postMessage({
+        type: 'streamlit:setComponentValue',
+        value: isDark
+    }, '*');
+    </script>
+    """
+    is_dark = st.components.v1.html(theme_detector, height=0, width=0)
+    return "dark" if is_dark else "light"
+
+def get_theme_colors():
+    """Retorna um conjunto de cores baseado no tema atual."""
+    is_dark = get_streamlit_theme() == "dark"
+    
+    if is_dark:
+        return {
+            'background': '#1e2126',
+            'paper_bgcolor': '#1e2126',
+            'font_color': '#fafafa',
+            'grid_color': 'rgba(255, 255, 255, 0.1)',
+            'revenue_color': '#4CAF50',
+            'expense_color': '#EF5350',
+            'investment_color': '#42A5F5',
+            'colorscale': 'Plasma'
+        }
+    else:
+        return {
+            'background': 'white',
+            'paper_bgcolor': 'white',
+            'font_color': '#262730',
+            'grid_color': 'rgba(0, 0, 0, 0.1)',
+            'revenue_color': '#4CAF50',
+            'expense_color': '#EF5350',
+            'investment_color': '#42A5F5',
+            'colorscale': 'Viridis'
+        }
+
 def create_pie_chart(data, column, title):
-    """Cria um gráfico de pizza a partir dos dados"""
-    fig = px.pie(data, values='amount', names=column, title=title)
+    """Cria um gráfico de pizza a partir dos dados com compatibilidade de tema."""
+    theme_colors = get_theme_colors()
+    fig = px.pie(data, names=column, title=title)
+    
+    # Atualizar layout com cores do tema
+    fig.update_layout(
+        title_font_color=theme_colors['font_color'],
+        font_color=theme_colors['font_color'],
+        paper_bgcolor=theme_colors['paper_bgcolor'],
+        plot_bgcolor=theme_colors['background'],
+        legend_font_color=theme_colors['font_color']
+    )
+    
     return fig
 
 def create_bar_chart(data, x, y, title):
-    """Cria um gráfico de barras a partir dos dados"""
-    fig = px.bar(data, x=x, y=y, title=title, color=x)
+    """Cria um gráfico de barras a partir dos dados com compatibilidade de tema."""
+    theme_colors = get_theme_colors()
+    fig = px.bar(data, x=x, y=y, title=title)
+    
+    # Atualizar layout com cores do tema
+    fig.update_layout(
+        title_font_color=theme_colors['font_color'],
+        font_color=theme_colors['font_color'],
+        paper_bgcolor=theme_colors['paper_bgcolor'],
+        plot_bgcolor=theme_colors['background'],
+        xaxis=dict(
+            gridcolor=theme_colors['grid_color'],
+            tickfont=dict(color=theme_colors['font_color'])
+        ),
+        yaxis=dict(
+            gridcolor=theme_colors['grid_color'],
+            tickfont=dict(color=theme_colors['font_color'])
+        )
+    )
+    
     return fig
 
 def create_budget_comparison_chart(actual, ideal, labels):
-    """Cria um gráfico comparando orçamento real vs ideal"""
-    df = pd.DataFrame({
-        'Categoria': labels * 2,
-        'Valor': actual + ideal,
-        'Tipo': ['Atual'] * len(actual) + ['Ideal'] * len(ideal)
-    })
+    """Cria um gráfico comparando orçamento real vs ideal com compatibilidade de tema."""
+    theme_colors = get_theme_colors()
     
-    fig = px.bar(
-        df, 
-        x='Categoria', 
-        y='Valor', 
-        color='Tipo',
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        name='Ideal',
+        x=labels,
+        y=ideal,
+        marker_color='rgba(55, 83, 109, 0.7)'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Real',
+        x=labels,
+        y=actual,
+        marker_color='rgba(26, 118, 255, 0.7)'
+    ))
+    
+    fig.update_layout(
+        title='Comparação de Orçamento',
         barmode='group',
-        title='Comparação de Orçamento: Atual vs. Ideal (50/30/20)',
-        labels={'Valor': 'Valor (R$)', 'Categoria': ''}
+        title_font_color=theme_colors['font_color'],
+        font_color=theme_colors['font_color'],
+        paper_bgcolor=theme_colors['paper_bgcolor'],
+        plot_bgcolor=theme_colors['background'],
+        xaxis=dict(
+            gridcolor=theme_colors['grid_color'],
+            tickfont=dict(color=theme_colors['font_color'])
+        ),
+        yaxis=dict(
+            gridcolor=theme_colors['grid_color'],
+            tickfont=dict(color=theme_colors['font_color'])
+        )
     )
     
     return fig
@@ -209,6 +301,9 @@ def show_dashboard():
     summary = get_monthly_summary()
     balance = get_balance()
     
+    # Obter cores do tema
+    theme_colors = get_theme_colors()
+    
     # Métricas principais
     col1, col2, col3, col4 = st.columns(4)
     
@@ -231,11 +326,18 @@ def show_dashboard():
     with col1:
         st.subheader("Receitas vs Despesas do Mês")
         fig = go.Figure(data=[
-            go.Bar(name='Receitas', x=[''], y=[summary['receitas']], marker_color='green'),
-            go.Bar(name='Despesas', x=[''], y=[summary['despesas'] - summary['investimentos']], marker_color='red'),
-            go.Bar(name='Investimentos', x=[''], y=[summary['investimentos']], marker_color='blue')
+            go.Bar(name='Receitas', x=[''], y=[summary['receitas']], marker_color=theme_colors['revenue_color']),
+            go.Bar(name='Despesas', x=[''], y=[summary['despesas'] - summary['investimentos']], marker_color=theme_colors['expense_color']),
+            go.Bar(name='Investimentos', x=[''], y=[summary['investimentos']], marker_color=theme_colors['investment_color'])
         ])
-        fig.update_layout(barmode='group')
+        fig.update_layout(
+            barmode='group',
+            paper_bgcolor=theme_colors['paper_bgcolor'],
+            plot_bgcolor=theme_colors['background'],
+            font_color=theme_colors['font_color'],
+            xaxis=dict(gridcolor=theme_colors['grid_color']),
+            yaxis=dict(gridcolor=theme_colors['grid_color'])
+        )
         st.plotly_chart(fig, use_container_width=True, key="receitas_despesas_chart")
     
     with col2:
@@ -245,12 +347,16 @@ def show_dashboard():
         if categorias_valores:
             fig_pizza = go.Figure(data=[
                 go.Pie(labels=list(categorias_valores.keys()),
-                      values=list(categorias_valores.values()))
+                      values=list(categorias_valores.values()),
+                      marker=dict(colors=px.colors.sequential.Viridis))
             ])
-            fig_pizza.update_layout(showlegend=True)
+            fig_pizza.update_layout(
+                showlegend=True,
+                paper_bgcolor=theme_colors['paper_bgcolor'],
+                plot_bgcolor=theme_colors['background'],
+                font_color=theme_colors['font_color']
+            )
             st.plotly_chart(fig_pizza, use_container_width=True, key="distribuicao_gastos_chart")
-        else:
-            st.info("Sem dados suficientes para mostrar a distribuição de gastos")
     
     # Regra 50/30/20
     st.subheader("Orçamento 50/30/20")

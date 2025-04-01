@@ -19,13 +19,18 @@ def main():
     # Aplicar tema personalizado
     st.markdown("""
         <style>
+        /* Estilo responsivo para modo claro e escuro */
         .stApp {
-            background-color: #f5f7fa;
+            background-color: var(--background-color);
         }
+        
+        /* Sidebar com adaptação para tema */
         .stSidebar {
-            background-color: #ffffff;
-            border-right: 1px solid #eee;
+            background-color: var(--secondary-background-color);
+            border-right: 1px solid var(--border-color);
         }
+        
+        /* Botões estilizados */
         .stButton>button {
             border-radius: 8px;
             transition: all 0.3s ease;
@@ -34,32 +39,74 @@ def main():
             transform: translateY(-2px);
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
+        
+        /* Cards de métricas adaptáveis ao tema */
         .metric-card {
-            background-color: white;
+            background-color: var(--secondary-background-color);
+            color: var(--text-color);
             padding: 1.5rem;
             border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px var(--shadow-color);
             transition: all 0.3s ease;
         }
         .metric-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px var(--shadow-color);
         }
+        
+        /* Links de navegação */
         .nav-link {
             padding: 0.5rem 1rem;
             margin: 0.2rem 0;
             border-radius: 8px;
             transition: all 0.3s ease;
             text-decoration: none;
+            color: var(--text-color);
         }
         .nav-link:hover {
-            background-color: #f8f9fa;
+            background-color: var(--hover-color);
         }
+        
+        /* Contêiner de gráficos */
         .chart-container {
-            background-color: white;
+            background-color: var(--secondary-background-color);
+            color: var(--text-color);
             padding: 1rem;
             border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px var(--shadow-color);
+            margin: 1rem 0;
+        }
+        
+        /* Definição de variáveis CSS baseadas no tema */
+        :root {
+            --background-color: #f5f7fa;
+            --secondary-background-color: #ffffff;
+            --text-color: #262730;
+            --border-color: #eee;
+            --shadow-color: rgba(0,0,0,0.05);
+            --hover-color: #f8f9fa;
+        }
+        
+        /* Adaptação para o tema escuro */
+        [data-theme="dark"] {
+            --background-color: #0e1117;
+            --secondary-background-color: #1e2126;
+            --text-color: #fafafa;
+            --border-color: #333;
+            --shadow-color: rgba(0,0,0,0.3);
+            --hover-color: #2e3136;
+        }
+        
+        /* Garantir contraste adequado para textos */
+        p, h1, h2, h3, h4, h5, h6, span, div {
+            color: var(--text-color);
+        }
+        
+        /* Estilos para plots e gráficos */
+        .plot-container {
+            background-color: var(--secondary-background-color);
+            border-radius: 10px;
+            padding: 1rem;
             margin: 1rem 0;
         }
         </style>
