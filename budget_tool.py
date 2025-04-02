@@ -10,10 +10,10 @@ from theme_manager import init_theme_manager, theme_config_section, get_theme_co
 def calculate_budget_distribution(transactions):
     """Calcula a distribuição atual do orçamento seguindo a regra 50/30/20"""
     # Filtrar apenas transações pagas
-    paid_transactions = [t for t in transactions if t['status'].lower() == 'pago']
+    paid_transactions = [t for t in transactions if str(t.get('status', '')).lower() in ['pago', 'paid']]
     
     # Calcular receita total
-    income = sum(t['amount'] for t in paid_transactions if t['type'].lower() == 'receita')
+    income = sum(float(t.get('amount', 0)) for t in paid_transactions if str(t.get('type', '')).lower() in ['receita', 'income', 'revenue'])
     
     if income == 0:
         return None
@@ -26,15 +26,28 @@ def calculate_budget_distribution(transactions):
     }
     
     for t in paid_transactions:
-        if t['type'].lower() == 'despesa':
-            amount = t['amount']
-            if t['categoria_tipo'] == 'necessidade':
+        tipo = str(t.get('type', '')).lower()
+        categoria_tipo = str(t.get('categoria_tipo', '')).lower()
+        amount = float(t.get('amount', 0))
+        
+        # Log para depuração
+        print(f"Processando transação: {t.get('description')} | Tipo: {tipo} | Categoria: {categoria_tipo} | Valor: {amount}")
+        
+        if tipo in ['despesa', 'expense', 'expenses']:
+            if categoria_tipo in ['necessidade', 'necessidades']:
                 expenses['Necessidades'] += amount
-            elif t['categoria_tipo'] == 'desejo':
+                print(f"  → Adicionando à Necessidades: R${amount:.2f}")
+            elif categoria_tipo in ['desejo', 'desejos']:
                 expenses['Desejos'] += amount
-        elif t['type'].lower() == 'investimento':
+                print(f"  → Adicionando à Desejos: R${amount:.2f}")
+            else:
+                # Se não tiver categoria específica, considerar como necessidade
+                expenses['Necessidades'] += amount
+                print(f"  → Categoria não especificada, adicionando à Necessidades: R${amount:.2f}")
+        elif tipo in ['investimento', 'investment']:
             # Todos os investimentos vão para poupança
-            expenses['Poupança'] += t['amount']
+            expenses['Poupança'] += amount
+            print(f"  → Adicionando à Poupança: R${amount:.2f}")
     
     # Calcular percentuais ideais
     ideal = {
@@ -46,6 +59,12 @@ def calculate_budget_distribution(transactions):
     # Calcular percentuais reais
     real = {cat: (value / income * 100) if income > 0 else 0 
             for cat, value in expenses.items()}
+    
+    print(f"Resumo do orçamento:")
+    print(f"  Renda total: R${income:.2f}")
+    print(f"  Necessidades: R${expenses['Necessidades']:.2f} ({real['Necessidades']:.1f}%)")
+    print(f"  Desejos: R${expenses['Desejos']:.2f} ({real['Desejos']:.1f}%)")
+    print(f"  Poupança: R${expenses['Poupança']:.2f} ({real['Poupança']:.1f}%)")
     
     return {
         'income': income,
@@ -73,12 +92,35 @@ def show_budget_tool():
     - **20%** para poupança e investimentos
     """)
     
-    # Obter transações e calcular distribuição
-    transactions = view_transactions()
-    if not transactions:
-        st.warning("Nenhuma transação registrada ainda.")
+    # Obter transações diretamente do Supabase
+    try:
+        from supabase_db import init_supabase
+        
+        # Inicializar conexão com Supabase
+        supabase = init_supabase()
+        if not supabase:
+            st.error("Erro ao conectar ao banco de dados Supabase.")
+            return
+            
+        # Buscar todas as transações
+        print("Buscando transações para o orçamento 50/30/20...")
+        response = supabase.table("transactions").select("*").limit(100).execute()
+        transactions = response.data
+        print(f"Total de transações encontradas: {len(transactions)}")
+        
+        if not transactions:
+            st.warning("Nenhuma transação registrada ainda.")
+            return
+            
+        # Exibir IDs das transações para debug
+        print(f"IDs das transações: {[t.get('id') for t in transactions]}")
+    except Exception as e:
+        st.error(f"Erro ao buscar transações: {e}")
+        import traceback
+        print(traceback.format_exc())
         return
     
+    # Calcular distribuição do orçamento
     distribution = calculate_budget_distribution(transactions)
     if not distribution:
         st.warning("Nenhuma receita registrada ainda.")
