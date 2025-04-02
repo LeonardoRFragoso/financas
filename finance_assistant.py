@@ -7,6 +7,7 @@ from openai import OpenAI
 from db import DB_PATH
 from transactions_db import view_transactions
 from categories import get_categories
+from theme_manager import init_theme_manager, theme_config_section, get_theme_colors
 
 # Configuração da API OpenAI usando st.secrets
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
@@ -493,6 +494,12 @@ class FinanceAssistant:
 def show_finance_assistant():
     """Interface do Assistente Financeiro no Streamlit"""
     st.subheader("Assistente Financeiro Inteligente")
+    
+    # Inicializar o gerenciador de tema
+    init_theme_manager()
+    
+    # Mostrar configuração de tema
+    theme_config_section()
     
     assistant = FinanceAssistant()
     

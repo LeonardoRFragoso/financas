@@ -1,5 +1,7 @@
 import sqlite3
 import json
+import streamlit as st
+from theme_manager import init_theme_manager, theme_config_section
 
 def init_settings():
     """Inicializa a tabela de configurações no banco de dados"""
@@ -15,7 +17,6 @@ def init_settings():
     
     # Configurações padrão
     default_settings = {
-        "dark_mode": True,
         "currency": "BRL",
         "date_format": "%d/%m/%Y",
         "show_notifications": True
@@ -71,17 +72,26 @@ def update_setting(name, value):
 def show_settings_page():
     """Interface de usuário para configurações"""
     from db import DB_PATH
-    import streamlit as st
     
-    st.subheader("Configurações do Aplicativo")
+    st.title("Configurações do Aplicativo")
+    
+    # Inicializar o gerenciador de tema
+    init_theme_manager()
+    
+    # Mostrar configuração de tema
+    theme_config_section()
     
     # Obter configurações atuais
     settings = get_settings()
     
+    # Verificar se a configuração dark_mode está sincronizada com o state do tema
+    if settings.get("dark_mode", True) != st.session_state.get('use_dark_theme', False):
+        update_setting("dark_mode", st.session_state.get('use_dark_theme', False))
+        settings["dark_mode"] = st.session_state.get('use_dark_theme', False)
+    
     # Formulário de configurações
     with st.form(key="settings_form"):
-        dark_mode = st.checkbox("Modo Escuro", 
-                               value=settings.get("dark_mode", True))
+        # O tema é gerenciado pelo theme_manager, removido daqui
         
         currency_options = ["BRL", "USD", "EUR", "GBP"]
         currency = st.selectbox("Moeda", 
@@ -107,7 +117,7 @@ def show_settings_page():
         
         if submit_button:
             # Atualizar configurações
-            update_setting("dark_mode", dark_mode)
+            update_setting("dark_mode", st.session_state.get('use_dark_theme', False))
             update_setting("currency", currency)
             update_setting("date_format", date_format)
             update_setting("show_notifications", show_notifications)

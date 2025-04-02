@@ -16,42 +16,26 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    # Aplicar tema personalizado
+    # Aplicar apenas CSS que complementa o tema, sem sobreescrever as cores de tema do Streamlit
     st.markdown("""
         <style>
-        /* Estilo responsivo para modo claro e escuro */
-        .stApp {
-            background-color: var(--background-color);
-        }
-        
-        /* Sidebar com adaptação para tema */
-        .stSidebar {
-            background-color: var(--secondary-background-color);
-            border-right: 1px solid var(--border-color);
-        }
-        
-        /* Botões estilizados */
+        /* Elementos de layout e animações que não interferem com o tema */
         .stButton>button {
             border-radius: 8px;
             transition: all 0.3s ease;
         }
         .stButton>button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         
-        /* Cards de métricas adaptáveis ao tema */
+        /* Cards de métricas */
         .metric-card {
-            background-color: var(--secondary-background-color);
-            color: var(--text-color);
             padding: 1.5rem;
             border-radius: 10px;
-            box-shadow: 0 2px 4px var(--shadow-color);
             transition: all 0.3s ease;
         }
         .metric-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px var(--shadow-color);
         }
         
         /* Links de navegação */
@@ -61,53 +45,57 @@ def main():
             border-radius: 8px;
             transition: all 0.3s ease;
             text-decoration: none;
-            color: var(--text-color);
         }
         .nav-link:hover {
-            background-color: var(--hover-color);
-        }
-        
-        /* Contêiner de gráficos */
-        .chart-container {
-            background-color: var(--secondary-background-color);
-            color: var(--text-color);
-            padding: 1rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px var(--shadow-color);
-            margin: 1rem 0;
-        }
-        
-        /* Definição de variáveis CSS baseadas no tema */
-        :root {
-            --background-color: #f5f7fa;
-            --secondary-background-color: #ffffff;
-            --text-color: #262730;
-            --border-color: #eee;
-            --shadow-color: rgba(0,0,0,0.05);
-            --hover-color: #f8f9fa;
-        }
-        
-        /* Adaptação para o tema escuro */
-        [data-theme="dark"] {
-            --background-color: #0e1117;
-            --secondary-background-color: #1e2126;
-            --text-color: #fafafa;
-            --border-color: #333;
-            --shadow-color: rgba(0,0,0,0.3);
-            --hover-color: #2e3136;
-        }
-        
-        /* Garantir contraste adequado para textos */
-        p, h1, h2, h3, h4, h5, h6, span, div {
-            color: var(--text-color);
+            opacity: 0.8;
         }
         
         /* Estilos para plots e gráficos */
         .plot-container {
-            background-color: var(--secondary-background-color);
             border-radius: 10px;
             padding: 1rem;
             margin: 1rem 0;
+        }
+        
+        /* Conteúdo principal */
+        .main .block-container {
+            padding: 1rem;
+        }
+        
+        /* Classes utilitárias */
+        .card {
+            border-radius: 10px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        /* Suporte para widgets personalizados */
+        .custom-widget {
+            border-radius: 8px;
+            padding: 10px;
+        }
+        
+        /* Estilos para as abas */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            border-radius: 4px 4px 0px 0px;
+            padding: 8px 16px;
+            transition: all 0.3s ease;
+        }
+        
+        /* Animações suaves */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .st-emotion-cache-16txtl3 h1,
+        .st-emotion-cache-16txtl3 h2,
+        .st-emotion-cache-16txtl3 h3 {
+            animation: fadeIn 0.5s ease-in-out;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -120,72 +108,38 @@ def main():
         st.title("💰 Controle Financeiro")
         st.markdown("---")
         
-        # Navegação
-        pages = {
-            "Dashboard": {"icon": "📊", "desc": "Visão geral das suas finanças"},
-            "Transações": {"icon": "💸", "desc": "Gerenciar receitas e despesas"},
-            "Orçamento 50/30/20": {"icon": "📈", "desc": "Análise do seu orçamento"},
-            "Relatórios": {"icon": "📑", "desc": "Relatórios detalhados"},
-            "Assistente Financeiro": {"icon": "🤖", "desc": "Dicas e recomendações"},
-            "Metas": {"icon": "🎯", "desc": "Suas metas financeiras"},
-            "Configurações": {"icon": "⚙️", "desc": "Personalizar o sistema"}
-        }
-        
-        selected_page = None
-        for page, info in pages.items():
-            col1, col2 = st.columns([1, 4])
-            with col1:
-                st.markdown(f"### {info['icon']}")
-            with col2:
-                if st.button(page, key=f"nav_{page}", use_container_width=True):
-                    selected_page = page
-                st.caption(info['desc'])
-            
-        st.markdown("---")
-        st.caption("© 2025 Controle Financeiro")
+        # Menu de navegação
+        menu = st.radio(
+            "Navegação",
+            ["📊 Dashboard", "💸 Transações", "📈 Orçamento", "📑 Relatórios", "🎯 Metas", "🤖 Assistente"]
+        )
     
-    # Renderizar página selecionada
-    if selected_page is None:
-        selected_page = "Dashboard"  # Página padrão
-    
-    # Cabeçalho da página
-    st.markdown(f"# {pages[selected_page]['icon']} {selected_page}")
-    st.markdown("---")
-    
-    if selected_page == "Dashboard":
+    # Conteúdo baseado na seleção do menu
+    if "Dashboard" in menu:
         show_dashboard()
-    
-    elif selected_page == "Transações":
-        st.subheader("💸 Gerenciar Transações")
-        
-        # Formulário para adicionar transação
-        with st.expander("➕ Adicionar Nova Transação", expanded=False):
-            from ui import create_transaction_form
-            create_transaction_form()
-        
-        # Visualizar transações
-        transactions = get_transactions()
-        if transactions:
-            from ui import display_transactions
-            display_transactions(transactions)
-        else:
-            st.info("🔍 Nenhuma transação registrada ainda.")
-    
-    elif selected_page == "Orçamento 50/30/20":
+    elif "Transações" in menu:
+        from ui import show_transactions_page
+        show_transactions_page()
+    elif "Orçamento" in menu:
         show_budget_tool()
-    
-    elif selected_page == "Relatórios":
+    elif "Relatórios" in menu:
         show_reports()
-    
-    elif selected_page == "Assistente Financeiro":
+    elif "Metas" in menu:
+        from ui import show_goals_page
+        show_goals_page()
+    elif "Assistente" in menu:
         show_finance_assistant()
     
-    elif selected_page == "Metas":
-        show_goals()
-    
-    elif selected_page == "Configurações":
-        from settings import show_settings_page
-        show_settings_page()
+    # Rodapé
+    st.markdown("---")
+    st.markdown(
+        """
+        <div style="text-align: center;">
+            <p>Controle Financeiro 2025 - Desenvolvido com ❤️ usando Streamlit</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()

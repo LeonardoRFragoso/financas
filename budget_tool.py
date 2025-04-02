@@ -5,6 +5,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from datetime import datetime
 from transactions_db import view_transactions
+from theme_manager import init_theme_manager, theme_config_section, get_theme_colors, apply_theme_to_plotly_chart
 
 def calculate_budget_distribution(transactions):
     """Calcula a distribuição atual do orçamento seguindo a regra 50/30/20"""
@@ -57,6 +58,12 @@ def show_budget_tool():
     """Mostra a ferramenta de orçamento 50/30/20"""
     st.title("Orçamento 50/30/20")
     
+    # Inicializar o gerenciador de tema
+    init_theme_manager()
+    
+    # Mostrar configuração de tema
+    theme_config_section()
+    
     st.write("""
     ### Como funciona a regra 50/30/20?
     
@@ -91,16 +98,31 @@ def show_budget_tool():
         st.metric("Disponível", 
                  f"R$ {distribution['income'] - sum(distribution['expenses'].values()):,.2f}")
     
+    # Obter cores do tema
+    theme_colors = get_theme_colors()
+    
     # Criar gráfico comparativo
     categories = list(distribution['expenses'].keys())
     values_real = [distribution['expenses'][cat] for cat in categories]
     values_ideal = [distribution['ideal'][cat] for cat in categories]
     
     fig = go.Figure(data=[
-        go.Bar(name='Real', x=categories, y=values_real),
-        go.Bar(name='Ideal', x=categories, y=values_ideal)
+        go.Bar(
+            name='Real', 
+            x=categories, 
+            y=values_real,
+            marker_color=theme_colors['accent_color']
+        ),
+        go.Bar(
+            name='Ideal', 
+            x=categories, 
+            y=values_ideal,
+            marker_color=theme_colors['success_color']
+        )
     ])
     
+    # Aplicar estilo baseado no tema
+    fig = apply_theme_to_plotly_chart(fig)
     fig.update_layout(
         title='Distribuição Real vs Ideal',
         yaxis_title='Valor (R$)',

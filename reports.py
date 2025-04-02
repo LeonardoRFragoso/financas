@@ -8,10 +8,17 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from transactions_db import view_transactions
 from transactions_analysis import get_balance, get_monthly_summary
+from theme_manager import init_theme_manager, theme_config_section, get_theme_colors, apply_theme_to_plotly_chart
 
 def show_reports():
     """Mostra os relatórios financeiros"""
     st.title("📊 Relatórios")
+    
+    # Inicializar o gerenciador de tema
+    init_theme_manager()
+    
+    # Mostrar configuração de tema
+    theme_config_section()
     
     # Obter transações
     transactions = view_transactions()
@@ -62,6 +69,7 @@ def show_overview(df):
         names=df_type.index,
         title='Distribuição por Tipo de Transação'
     )
+    apply_theme_to_plotly_chart(fig)
     st.plotly_chart(fig, use_container_width=True)
     
     # Tabela com resumo
@@ -108,6 +116,7 @@ def show_cash_flow(df):
         color='type',
         title=f'Fluxo de Caixa - {period}'
     )
+    apply_theme_to_plotly_chart(fig)
     fig.update_layout(
         xaxis_title='Data',
         yaxis_title='Valor (R$)'
@@ -155,6 +164,7 @@ def show_category_analysis(df):
         )
     ])
     
+    apply_theme_to_plotly_chart(fig)
     fig.update_layout(
         title=f'Total por Categoria - {type_filter}s',
         xaxis_title='Valor (R$)',

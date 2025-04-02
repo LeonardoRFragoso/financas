@@ -39,8 +39,11 @@ def get_transactions():
     supabase = init_supabase()
     if not supabase:
         return []
-    
-    response = supabase.table("transactions").select("*").order("date", desc=True).execute()
+    print("Buscando transações do Supabase...")
+    response = supabase.table("transactions").select("*").order("date", desc=True).limit(100).execute()
+    print(f"Total de transações encontradas no Supabase: {len(response.data)}")
+    if response.data:
+        print(f"IDs das transações: {[t.get('id') for t in response.data]}")
     return response.data
 
 def add_transaction(user_id, description, amount, category, date, due_date, 
@@ -117,6 +120,15 @@ def add_category(name, category_type, categoria_tipo, active=True):
     response = supabase.table("categories").insert(category_data).execute()
     return response.data
 
+def update_category(category_id, data):
+    """Atualiza uma categoria existente no Supabase"""
+    supabase = init_supabase()
+    if not supabase:
+        return False
+    
+    response = supabase.table("categories").update(data).eq("id", category_id).execute()
+    return response.data
+
 # Funções para metas
 def get_goals():
     """Obtém todas as metas do Supabase"""
@@ -144,6 +156,24 @@ def add_goal(user_id, description, target_amount, current_amount, deadline, cate
     }
     
     response = supabase.table("goals").insert(goal_data).execute()
+    return response.data
+
+def update_goal(goal_id, data):
+    """Atualiza uma meta existente no Supabase"""
+    supabase = init_supabase()
+    if not supabase:
+        return False
+    
+    response = supabase.table("goals").update(data).eq("id", goal_id).execute()
+    return response.data
+
+def delete_goal(goal_id):
+    """Deleta uma meta no Supabase"""
+    supabase = init_supabase()
+    if not supabase:
+        return False
+    
+    response = supabase.table("goals").delete().eq("id", goal_id).execute()
     return response.data
 
 # Funções para configurações
