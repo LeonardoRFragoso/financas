@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-import sqlite3
 import json
 from openai import OpenAI
-from db import DB_PATH
 from transactions_db import view_transactions
 from categories import get_categories
 from theme_manager import init_theme_manager, theme_config_section, get_theme_colors
+from supabase_db import init_supabase
 
 # Configuração da API OpenAI usando st.secrets
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
@@ -20,157 +19,156 @@ class FinanceAssistant:
         
     def get_financial_summary(self):
         """Obtém um resumo dos dados financeiros do usuário."""
-        transactions = view_transactions()
-        
-        if not transactions:
-            return {"status": "empty", "message": "Nenhuma transação encontrada."}
-        
-        # Converter transações para DataFrame
-        columns = ['id', 'user_id', 'description', 'amount', 'category', 'date', 
-                   'due_date', 'type', 'status', 'recurring', 'priority', 
-                   'quinzena', 'installments', 'current_installment', 
-                   'fixed_expense', 'categoria_tipo', 'created_at']
-        
-        df = pd.DataFrame(transactions, columns=columns)
-        
-        # Filtrar apenas transações pagas
-        df = df[df['status'].str.lower() == 'pago']
-        
-        # Calcular receitas e despesas
-        receitas = df[df['type'] == 'Receita']['amount'].sum()
-        despesas = df[df['type'] == 'Despesa']['amount'].sum()
-        investimentos = df[df['type'] == 'Investimento']['amount'].sum()
-        saldo = receitas - despesas - investimentos
-        
-        # Obter contas a pagar para os próximos 30 dias
-        hoje = datetime.now().date()
-        proximo_mes = hoje + timedelta(days=30)
-        
-        proximas_contas = df[
-            (df['type'] == 'Despesa') & 
-            (df['status'].str.lower() == 'pendente') & 
-            (pd.to_datetime(df['due_date']).dt.date <= proximo_mes)
-        ].sort_values('due_date')
-        
-        # Calcular distribuição 50/30/20
-        necessidades = df[(df['type'] == 'Despesa') & (df['categoria_tipo'] == 'necessidade')]['amount'].sum()
-        desejos = df[(df['type'] == 'Despesa') & (df['categoria_tipo'] == 'desejo')]['amount'].sum()
-        poupanca = df[(df['type'] == 'Despesa') & (df['categoria_tipo'] == 'poupanca')]['amount'].sum()
-        
-        # Adicionar investimentos à poupança
-        poupanca += investimentos
-        
-        # Calcular percentuais
-        if receitas > 0:
-            perc_necessidades = (necessidades / receitas) * 100
-            perc_desejos = (desejos / receitas) * 100
-            perc_poupanca = (poupanca / receitas) * 100
-        else:
-            perc_necessidades = perc_desejos = perc_poupanca = 0
-        
-        # Preparar dados de contas próximas
-        proximas_contas_formatadas = []
-        for _, conta in proximas_contas.iterrows():
-            proximas_contas_formatadas.append({
-                "description": conta['description'],
-                "amount": float(conta['amount']),
-                "due_date": conta['due_date'],
-                "category": conta['category'],
-                "priority": int(conta['priority'])
-            })
-        
-        # Buscar as datas reais dos últimos recebimentos (receitas)
-        conn = sqlite3.connect('financas.db')
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT date 
-            FROM transactions 
-            WHERE type = 'Receita' 
-            AND LOWER(status) = 'pago'
-            ORDER BY date DESC 
-            LIMIT 2
-        """)
-        ultimos_recebimentos = [datetime.strptime(data[0], '%Y-%m-%d').date() for data in cursor.fetchall()]
-        conn.close()
-        
-        # Se temos histórico de recebimentos, usar para calcular próximo pagamento
-        if ultimos_recebimentos:
-            ultimo_recebimento = ultimos_recebimentos[0]  # Data mais recente
-            
-            # Verificar se o último recebimento foi na primeira quinzena (dia 15)
-            if ultimo_recebimento.day <= 15:
-                # Próximo será no final do mês
-                # Obtém o último dia do mês atual
-                if ultimo_recebimento.month == 12:
-                    proximo_mes = datetime(ultimo_recebimento.year + 1, 1, 1).date()
-                else:
-                    proximo_mes = datetime(ultimo_recebimento.year, ultimo_recebimento.month + 1, 1).date()
-                data_proximo_pagamento = proximo_mes - timedelta(days=1)
-            else:
-                # Próximo será no dia 15 do mês seguinte
-                if ultimo_recebimento.month == 12:
-                    data_proximo_pagamento = datetime(ultimo_recebimento.year + 1, 1, 15).date()
-                else:
-                    data_proximo_pagamento = datetime(ultimo_recebimento.year, ultimo_recebimento.month + 1, 15).date()
-        else:
-            # Lógica anterior como fallback
-            quinzena_atual = 1 if hoje.day <= 15 else 2
-            if quinzena_atual == 1:
-                # Próximo pagamento será no dia 15
-                data_proximo_pagamento = datetime(hoje.year, hoje.month, 15).date()
-                if hoje.day > 15:
-                    # Se já passamos do dia 15, será no próximo mês
-                    if hoje.month == 12:
-                        data_proximo_pagamento = datetime(hoje.year + 1, 1, 15).date()
-                    else:
-                        data_proximo_pagamento = datetime(hoje.year, hoje.month + 1, 15).date()
-            else:
-                # Próximo pagamento será no final do mês
-                if hoje.month == 12:
-                    data_proximo_pagamento = datetime(hoje.year + 1, 1, 1).date()
-                else:
-                    data_proximo_pagamento = datetime(hoje.year, hoje.month + 1, 1).date()
+        try:
+            # Obter transações diretamente do Supabase
+            supabase = init_supabase()
+            if not supabase:
+                return {"status": "error", "message": "Erro ao conectar ao banco de dados."}
                 
-                # Ajustar para o último dia do mês atual
-                data_proximo_pagamento = data_proximo_pagamento - timedelta(days=1)
-        
-        # Calcular dias até o próximo pagamento
-        dias_ate_proximo_pagamento = (data_proximo_pagamento - hoje).days
-        
-        # Preparar resumo financeiro para o assistente
-        summary = {
-            "status": "success",
-            "receitas": float(receitas),
-            "despesas": float(despesas),
-            "investimentos": float(investimentos),
-            "saldo": float(saldo),
-            "distribuicao": {
-                "necessidades": {
-                    "valor": float(necessidades),
-                    "percentual": float(perc_necessidades),
-                    "ideal": 50.0,
-                    "diferenca": float(perc_necessidades - 50.0)
+            print("Buscando transações para o assistente financeiro...")
+            response = supabase.table("transactions").select("*").limit(100).execute()
+            transactions = response.data
+            print(f"Total de transações encontradas: {len(transactions)}")
+            
+            if not transactions:
+                return {"status": "empty", "message": "Nenhuma transação encontrada."}
+            
+            # Exibir IDs das transações para debug
+            print(f"IDs das transações: {[t.get('id') for t in transactions]}")
+            
+            # Converter transações para DataFrame
+            df = pd.DataFrame(transactions)
+            
+            # Filtrar apenas transações pagas
+            df = df[df['status'].str.lower().isin(['pago', 'paid'])]
+            
+            # Calcular receitas e despesas
+            receitas = df[df['type'].str.lower().isin(['receita', 'income', 'revenue'])]['amount'].astype(float).sum()
+            despesas = df[df['type'].str.lower().isin(['despesa', 'expense', 'expenses'])]['amount'].astype(float).sum()
+            investimentos = df[df['type'].str.lower().isin(['investimento', 'investment'])]['amount'].astype(float).sum()
+            saldo = receitas - despesas - investimentos
+            
+            # Obter contas a pagar para os próximos 30 dias
+            hoje = datetime.now().date()
+            proximo_mes = (hoje + timedelta(days=30)).strftime('%Y-%m-%d')
+            hoje_str = hoje.strftime('%Y-%m-%d')
+            
+            proximas_contas = df[
+                (df['type'].str.lower().isin(['despesa', 'expense', 'expenses'])) & 
+                (df['status'].str.lower().isin(['pendente', 'pending'])) & 
+                (df['due_date'] <= proximo_mes) &
+                (df['due_date'] >= hoje_str)
+            ].sort_values('due_date')
+            
+            # Calcular distribuição 50/30/20
+            necessidades = df[(df['type'].str.lower().isin(['despesa', 'expense', 'expenses'])) & 
+                             (df['categoria_tipo'].str.lower().isin(['necessidade', 'necessidades']))]['amount'].astype(float).sum()
+            
+            desejos = df[(df['type'].str.lower().isin(['despesa', 'expense', 'expenses'])) & 
+                        (df['categoria_tipo'].str.lower().isin(['desejo', 'desejos']))]['amount'].astype(float).sum()
+            
+            poupanca = df[(df['type'].str.lower().isin(['despesa', 'expense', 'expenses'])) & 
+                         (df['categoria_tipo'].str.lower() == 'poupanca')]['amount'].astype(float).sum()
+            
+            # Adicionar investimentos à poupança
+            poupanca += investimentos
+            
+            # Calcular percentuais
+            if receitas > 0:
+                perc_necessidades = (necessidades / receitas) * 100
+                perc_desejos = (desejos / receitas) * 100
+                perc_poupanca = (poupanca / receitas) * 100
+            else:
+                perc_necessidades = perc_desejos = perc_poupanca = 0
+            
+            # Preparar dados de contas próximas
+            proximas_contas_formatadas = []
+            for _, conta in proximas_contas.iterrows():
+                proximas_contas_formatadas.append({
+                    "description": conta['description'],
+                    "amount": float(conta['amount']),
+                    "due_date": conta['due_date'],
+                    "category": conta.get('category', ''),
+                    "priority": int(conta.get('priority', 1))
+                })
+            
+            # Buscar as datas reais dos últimos recebimentos (receitas)
+            receitas_df = df[df['type'].str.lower().isin(['receita', 'income', 'revenue'])].sort_values('date', ascending=False)
+            ultimos_recebimentos = []
+            
+            if not receitas_df.empty:
+                for _, receita in receitas_df.head(2).iterrows():
+                    try:
+                        data_receita = datetime.strptime(receita['date'], '%Y-%m-%d').date()
+                        ultimos_recebimentos.append(data_receita)
+                    except:
+                        pass
+            
+            # Se temos histórico de recebimentos, usar para calcular próximo pagamento
+            proximo_recebimento = None
+            if ultimos_recebimentos:
+                ultimo_recebimento = ultimos_recebimentos[0]  # Data mais recente
+                
+                # Verificar se o último recebimento foi na primeira quinzena (dia 15)
+                if ultimo_recebimento.day <= 15:
+                    # Próximo recebimento será no final do mês
+                    if ultimo_recebimento.month == 12:
+                        proximo_recebimento = datetime(ultimo_recebimento.year + 1, 1, 1).date() - timedelta(days=1)
+                    else:
+                        proximo_recebimento = datetime(ultimo_recebimento.year, ultimo_recebimento.month + 1, 1).date() - timedelta(days=1)
+                else:
+                    # Próximo recebimento será no dia 15 do próximo mês
+                    if ultimo_recebimento.month == 12:
+                        proximo_recebimento = datetime(ultimo_recebimento.year + 1, 1, 15).date()
+                    else:
+                        proximo_recebimento = datetime(ultimo_recebimento.year, ultimo_recebimento.month + 1, 15).date()
+            
+            # Calcular dias até o próximo recebimento
+            dias_ate_proximo_recebimento = None
+            if proximo_recebimento:
+                dias_ate_proximo_recebimento = (proximo_recebimento - hoje).days
+                
+            # Resumo
+            summary = {
+                "status": "success",
+                "receitas": float(receitas),
+                "despesas": float(despesas),
+                "investimentos": float(investimentos),
+                "saldo": float(saldo),
+                "proximas_contas": proximas_contas_formatadas,
+                "distribuicao": {
+                    "necessidades": {
+                        "valor": float(necessidades),
+                        "percentual": float(perc_necessidades),
+                        "ideal": 50.0,
+                        "diferenca": float(perc_necessidades - 50.0)
+                    },
+                    "desejos": {
+                        "valor": float(desejos),
+                        "percentual": float(perc_desejos),
+                        "ideal": 30.0,
+                        "diferenca": float(perc_desejos - 30.0)
+                    },
+                    "poupanca": {
+                        "valor": float(poupanca),
+                        "percentual": float(perc_poupanca),
+                        "ideal": 20.0,
+                        "diferenca": float(perc_poupanca - 20.0)
+                    }
                 },
-                "desejos": {
-                    "valor": float(desejos),
-                    "percentual": float(perc_desejos),
-                    "ideal": 30.0,
-                    "diferenca": float(perc_desejos - 30.0)
-                },
-                "poupanca": {
-                    "valor": float(poupanca),
-                    "percentual": float(perc_poupanca),
-                    "ideal": 20.0,
-                    "diferenca": float(perc_poupanca - 20.0)
-                }
-            },
-            "proximas_contas": proximas_contas_formatadas,
-            "quinzena_atual": 1 if hoje.day <= 15 else 2,
-            "proximo_pagamento": str(data_proximo_pagamento),
-            "dias_ate_proximo_pagamento": dias_ate_proximo_pagamento
-        }
-        
-        return summary
+                "quinzena_atual": 1 if hoje.day <= 15 else 2,
+                "proximo_pagamento": proximo_recebimento.strftime('%Y-%m-%d') if proximo_recebimento else None,
+                "dias_ate_proximo_pagamento": dias_ate_proximo_recebimento
+            }
+            
+            print(f"Resumo financeiro calculado: {json.dumps(summary, default=str)}")
+            return summary
+            
+        except Exception as e:
+            import traceback
+            print(f"Erro ao obter resumo financeiro: {e}")
+            print(traceback.format_exc())
+            return {"status": "error", "message": f"Erro ao processar dados: {str(e)}"}
     
     def get_advice(self, query_type=None):
         """
@@ -608,10 +606,19 @@ def show_finance_assistant():
                 )
             
             st.write("**Próximas Contas a Pagar:**")
-            for conta in summary['proximas_contas']:
-                st.write(f"- {conta['description']}: R$ {conta['amount']:.2f} (vencimento: {conta['due_date']})")
+            if summary['proximas_contas']:
+                for conta in summary['proximas_contas']:
+                    st.write(f"- {conta['description']}: R$ {conta['amount']:.2f} (vencimento: {conta['due_date']})")
+            else:
+                st.write("- Não há contas próximas para pagar.")
             
-            st.write(f"**Quinzena Atual:** {summary['quinzena_atual']}")
-            st.write(f"**Próximo Pagamento:** {summary['proximo_pagamento']} ({summary['dias_ate_proximo_pagamento']} dias)")
+            if 'quinzena_atual' in summary and 'proximo_pagamento' in summary and 'dias_ate_proximo_pagamento' in summary:
+                st.write(f"**Quinzena Atual:** {summary['quinzena_atual']}")
+                if summary['proximo_pagamento']:
+                    st.write(f"**Próximo Pagamento:** {summary['proximo_pagamento']} ({summary['dias_ate_proximo_pagamento']} dias)")
+                else:
+                    st.write("**Próximo Pagamento:** Não foi possível determinar")
+            else:
+                st.write("**Informações de pagamento:** Dados insuficientes")
         else:
             st.info(summary["message"])

@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.express as px
 from goals_db import (
     init_goals_table, add_goal, update_goal, 
-    delete_goal, view_goals, get_goal
+    delete_goal, view_goals, get_goal, update_goal_amount
 )
 
 def show_goals():
@@ -21,9 +21,14 @@ def show_goals():
     if 'editing_goal' not in st.session_state:
         st.session_state.editing_goal = None
     
+    if 'updating_goal_amount' not in st.session_state:
+        st.session_state.updating_goal_amount = None
+    
     # Tabs para organizar o conteúdo
     if st.session_state.editing_goal:
         show_goal_form()  # Mostrar formulário de edição primeiro
+    elif st.session_state.updating_goal_amount:
+        show_goal_amount_form()  # Mostrar formulário de atualização de valor
     else:
         tab1, tab2 = st.tabs([" Minhas Metas", " Nova Meta"])
         
@@ -72,6 +77,11 @@ def show_goals_list():
             with col2:
                 col2.markdown("### Ações")
                 
+                # Botão de atualizar valor
+                if st.button("💰 Atualizar Valor", key=f"update_amount_{goal['id']}"):
+                    st.session_state.updating_goal_amount = goal.to_dict()
+                    st.rerun()
+                
                 # Botão de editar
                 if st.button("✏️ Editar", key=f"edit_{goal['id']}"):
                     st.session_state.editing_goal = goal.to_dict()
@@ -84,6 +94,61 @@ def show_goals_list():
                         st.rerun()
                     else:
                         st.error("Erro ao excluir meta.")
+
+def show_goal_amount_form():
+    """Mostra o formulário para atualizar o valor atual de uma meta."""
+    if not st.session_state.updating_goal_amount:
+        st.error("Nenhuma meta selecionada para atualização.")
+        return
+    
+    goal = st.session_state.updating_goal_amount
+    
+    st.subheader(f"💰 Atualizar Valor da Meta: {goal['title']}")
+    
+    with st.form(key="goal_amount_form", clear_on_submit=True):
+        # Informações atuais
+        st.markdown(f"**Valor Alvo:** R$ {float(goal['target_amount']):,.2f}")
+        st.markdown(f"**Valor Atual:** R$ {float(goal['current_amount']):,.2f}")
+        
+        # Calcular progresso
+        progress = (float(goal['current_amount']) / float(goal['target_amount']) * 100) if float(goal['target_amount']) > 0 else 0
+        st.progress(min(1.0, progress / 100))
+        st.markdown(f"**Progresso Atual:** {progress:.1f}%")
+        
+        # Campo para novo valor
+        new_amount = st.number_input(
+            "Novo Valor Atual",
+            min_value=0.0,
+            max_value=float(goal['target_amount']),
+            value=float(goal['current_amount']),
+            step=100.0,
+            format="%.2f"
+        )
+        
+        # Calcular novo progresso
+        new_progress = (new_amount / float(goal['target_amount']) * 100) if float(goal['target_amount']) > 0 else 0
+        st.markdown(f"**Novo Progresso:** {new_progress:.1f}%")
+        
+        # Botões
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            submit = st.form_submit_button("💾 Salvar", type="primary")
+        
+        with col2:
+            cancel = st.form_submit_button("❌ Cancelar")
+        
+        if submit:
+            if update_goal_amount(goal['id'], new_amount):
+                st.success("Valor atualizado com sucesso!")
+                st.session_state.updating_goal_amount = None
+                st.rerun()
+            else:
+                st.error("Erro ao atualizar valor.")
+        
+        if cancel:
+            st.session_state.updating_goal_amount = None
+            st.rerun()
 
 def show_goal_form():
     """Mostra o formulário para adicionar/editar uma meta."""
