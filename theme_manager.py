@@ -1,45 +1,65 @@
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
+
 
 def init_theme_manager():
     """
-    Inicializa o gerenciador de tema.
-    Deve ser chamado no início de cada página.
+    Função mantida para compatibilidade com o código existente.
+    Não faz mais nada, pois o tema agora é controlado pelo Streamlit.
     """
-    # Inicializar a configuração de tema se não existir
-    if 'use_dark_theme' not in st.session_state:
-        st.session_state.use_dark_theme = False
-    
-    # Aplicar o tema atual usando query params
-    apply_theme()
+    pass
+
 
 def toggle_theme():
     """
-    Alterna entre os temas claro e escuro.
+    Função mantida para compatibilidade com o código existente.
+    Não faz mais nada, pois o tema agora é controlado pelo Streamlit.
     """
-    st.session_state.use_dark_theme = not st.session_state.use_dark_theme
-    apply_theme()
-    st.rerun()
+    pass
+
 
 def apply_theme():
     """
-    Aplica o tema atual ao Streamlit usando query params
+    Função mantida para compatibilidade com o código existente.
+    Não faz mais nada, pois o tema agora é controlado pelo Streamlit.
     """
-    # Define o parâmetro de tema na URL usando a versão atualizada
-    if st.session_state.get('use_dark_theme', False):
-        st.query_params["theme"] = "dark"
-    else:
-        st.query_params["theme"] = "light"
+    pass
+
+
+def theme_config_section():
+    """
+    Função mantida para compatibilidade com o código existente.
+    Agora exibe uma mensagem informativa sobre como alterar o tema.
+    """
+    pass
+
 
 def get_theme_colors():
     """
-    Retorna um dicionário de cores baseado no tema atual.
+    Retorna um dicionário de cores baseado no tema atual do Streamlit.
     """
-    if st.session_state.get('use_dark_theme', False):
+    try:
+        # Verifica o tema diretamente
+        is_dark_theme = st.get_option("theme.base") == "dark"
+    except Exception as e:
+        # Fallback 1: Verifica a cor de fundo
+        try:
+            background_color = st.get_option("theme.backgroundColor")
+            is_dark_theme = background_color.lower() in ["#0e1117", "#1e1e1e", "black", "#15191c", "#1a1d23"]
+        except Exception as e:
+            # Fallback 2: Verifica a cor do texto
+            try:
+                text_color = st.get_option("theme.textColor")
+                is_dark_theme = text_color.lower() in ["#ffffff", "#fafafa", "white", "#d3d3d3", "#e5e5e5"]
+            except Exception as e:
+                # Fallback 3: Usa tema claro como padrão
+                is_dark_theme = False
+
+    if is_dark_theme:
         return {
-            'background': '#1e2126',
-            'paper_bgcolor': '#1e2126',
+            'background': '#0e1117',
+            'paper_bgcolor': '#0e1117',
+            'plot_bgcolor': '#0e1117',
             'font_color': '#fafafa',
             'grid_color': 'rgba(255, 255, 255, 0.1)',
             'revenue_color': '#4CAF50',
@@ -56,6 +76,7 @@ def get_theme_colors():
         return {
             'background': 'white',
             'paper_bgcolor': 'white',
+            'plot_bgcolor': 'white',
             'font_color': '#262730',
             'grid_color': 'rgba(0, 0, 0, 0.1)',
             'revenue_color': '#4CAF50',
@@ -69,108 +90,134 @@ def get_theme_colors():
             'neutral_color': '#757575'
         }
 
-def theme_config_section():
-    """
-    Mostra um controle para alternar entre os temas.
-    """
-    with st.container():
-        cols = st.columns([2, 8])
-        with cols[0]:
-            if st.toggle("Tema escuro", value=st.session_state.get('use_dark_theme', False), key="theme_toggle"):
-                if not st.session_state.get('use_dark_theme', False):
-                    st.session_state.use_dark_theme = True
-                    apply_theme()
-                    st.rerun()
-            else:
-                if st.session_state.get('use_dark_theme', False):
-                    st.session_state.use_dark_theme = False
-                    apply_theme()
-                    st.rerun()
 
 def apply_theme_to_plotly_chart(fig):
     """
     Aplica o tema atual a um gráfico Plotly existente.
     """
     theme_colors = get_theme_colors()
-    
+    bg_color = theme_colors['plot_bgcolor']
+    text_color = theme_colors['font_color']
+    grid_color = theme_colors['grid_color']
+
     fig.update_layout(
-        paper_bgcolor=theme_colors['paper_bgcolor'],
-        plot_bgcolor=theme_colors['background'],
-        font_color=theme_colors['font_color'],
+        template=None,
+        paper_bgcolor=bg_color,
+        plot_bgcolor=bg_color,
+        font=dict(color=text_color),
+        margin=dict(l=10, r=10, t=30, b=10),
         xaxis=dict(
-            gridcolor=theme_colors['grid_color'],
-            tickfont=dict(color=theme_colors['font_color'])
+            gridcolor=grid_color,
+            tickfont=dict(color=text_color),
+            title_font=dict(color=text_color)
         ),
         yaxis=dict(
-            gridcolor=theme_colors['grid_color'],
-            tickfont=dict(color=theme_colors['font_color'])
-        )
+            gridcolor=grid_color,
+            tickfont=dict(color=text_color),
+            title_font=dict(color=text_color)
+        ),
+        legend=dict(font=dict(color=text_color))
     )
-    
+
+    if hasattr(fig, 'data'):
+        for trace in fig.data:
+            if hasattr(trace, 'textfont') and trace.textfont:
+                trace.textfont.color = text_color
+            if hasattr(trace, 'legendgrouptitle') and trace.legendgrouptitle:
+                if hasattr(trace.legendgrouptitle, 'font'):
+                    trace.legendgrouptitle.font.color = text_color
+                else:
+                    trace.legendgrouptitle.font = dict(color=text_color)
+
+    if hasattr(fig.layout, 'annotations'):
+        for annotation in fig.layout.annotations:
+            if hasattr(annotation, 'font') and annotation.font:
+                annotation.font.color = text_color
+
     return fig
+
 
 def create_pie_chart(labels, values, title=""):
     """
     Cria um gráfico de pizza com o tema atual.
+    Compatível com tema escuro e claro do Streamlit.
     """
     theme_colors = get_theme_colors()
-    
-    # Define cores personalizadas dependendo do tema
-    if theme_colors['colorscale'] == 'Plasma':
-        colors = ['#0d0887', '#46039f', '#7201a8', '#9c179e', '#bd3786', '#d8576b', '#ed7953', '#fb9f3a', '#fdca26', '#f0f921']
-    else:  # Viridis
-        colors = ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725']
-    
+
+    colors = (
+        ['#0d0887', '#46039f', '#7201a8', '#9c179e', '#bd3786',
+         '#d8576b', '#ed7953', '#fb9f3a', '#fdca26', '#f0f921']
+        if theme_colors['colorscale'] == 'Plasma' else
+        ['#440154', '#482878', '#3e4989', '#31688e', '#26828e',
+         '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725']
+    )
+
     fig = go.Figure(data=[
         go.Pie(
             labels=labels,
             values=values,
-            marker=dict(colors=colors)
+            marker=dict(colors=colors),
+            textinfo='percent+label',
+            textposition='inside',
+            textfont=dict(color=theme_colors['font_color']),
+            insidetextfont=dict(color=theme_colors['font_color']),
+            hoverinfo='label+percent+value',
+            hole=0.4
         )
     ])
-    
+
     fig.update_layout(
         title=title,
         title_font_color=theme_colors['font_color'],
-        font_color=theme_colors['font_color'],
+        font=dict(color=theme_colors['font_color']),
         paper_bgcolor=theme_colors['paper_bgcolor'],
-        plot_bgcolor=theme_colors['background'],
-        legend_font_color=theme_colors['font_color']
+        plot_bgcolor=theme_colors['plot_bgcolor'],
+        legend=dict(font=dict(color=theme_colors['font_color'])),
+        margin=dict(l=10, r=10, t=30, b=10)
     )
-    
+
     return fig
+
 
 def create_bar_chart(x, y, title=""):
     """
     Cria um gráfico de barras com o tema atual.
     """
     theme_colors = get_theme_colors()
-    
+
     fig = go.Figure(data=[
         go.Bar(
             x=x,
             y=y,
-            marker_color=theme_colors['accent_color']
+            marker_color=theme_colors['accent_color'],
+            hoverinfo='x+y',
+            texttemplate='%{y:.2f}',
+            textposition='auto',
+            textfont=dict(color=theme_colors['font_color'])
         )
     ])
-    
+
     fig.update_layout(
         title=title,
         title_font_color=theme_colors['font_color'],
         font_color=theme_colors['font_color'],
         paper_bgcolor=theme_colors['paper_bgcolor'],
-        plot_bgcolor=theme_colors['background'],
+        plot_bgcolor=theme_colors['plot_bgcolor'],
+        margin=dict(l=10, r=10, t=30, b=10),
         xaxis=dict(
             gridcolor=theme_colors['grid_color'],
-            tickfont=dict(color=theme_colors['font_color'])
+            tickfont=dict(color=theme_colors['font_color']),
+            title_font=dict(color=theme_colors['font_color'])
         ),
         yaxis=dict(
             gridcolor=theme_colors['grid_color'],
-            tickfont=dict(color=theme_colors['font_color'])
+            tickfont=dict(color=theme_colors['font_color']),
+            title_font=dict(color=theme_colors['font_color'])
         )
     )
-    
+
     return fig
+
 
 def style_dataframe(df):
     """
@@ -178,14 +225,14 @@ def style_dataframe(df):
     Retorna um estilo aplicado ao DataFrame.
     """
     theme_colors = get_theme_colors()
-    
+
     return df.style.set_properties(**{
         'background-color': theme_colors['paper_bgcolor'],
         'color': theme_colors['font_color'],
         'border': f'1px solid {theme_colors["grid_color"]}'
     }).set_table_styles([
         {'selector': 'th', 'props': [
-            ('background-color', theme_colors['background']),
+            ('background-color', theme_colors['plot_bgcolor']),
             ('color', theme_colors['font_color']),
             ('border', f'1px solid {theme_colors["grid_color"]}'),
             ('padding', '8px')

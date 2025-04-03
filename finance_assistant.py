@@ -97,7 +97,7 @@ class FinanceAssistant:
             ultimos_recebimentos = []
             
             if not receitas_df.empty:
-                for _, receita in receitas_df.head(2).iterrows():
+                for _, receita in receitas_df.head(6).iterrows():  # Analisar até 6 recebimentos recentes para identificar padrão
                     try:
                         data_receita = datetime.strptime(receita['date'], '%Y-%m-%d').date()
                         ultimos_recebimentos.append(data_receita)
@@ -106,28 +106,71 @@ class FinanceAssistant:
             
             # Se temos histórico de recebimentos, usar para calcular próximo pagamento
             proximo_recebimento = None
-            if ultimos_recebimentos:
-                ultimo_recebimento = ultimos_recebimentos[0]  # Data mais recente
+            if len(ultimos_recebimentos) >= 2:
+                # Analisar o padrão de recebimentos do usuário
+                dias_recebimento = [data.day for data in ultimos_recebimentos]
                 
-                # Verificar se o último recebimento foi na primeira quinzena (dia 15)
-                if ultimo_recebimento.day <= 15:
-                    # Próximo recebimento será no final do mês
-                    if ultimo_recebimento.month == 12:
-                        proximo_recebimento = datetime(ultimo_recebimento.year + 1, 1, 1).date() - timedelta(days=1)
+                # Identificar os dias do mês em que o usuário costuma receber
+                dias_comuns = {}
+                for dia in dias_recebimento:
+                    if dia in dias_comuns:
+                        dias_comuns[dia] += 1
                     else:
-                        proximo_recebimento = datetime(ultimo_recebimento.year, ultimo_recebimento.month + 1, 1).date() - timedelta(days=1)
-                else:
-                    # Próximo recebimento será no dia 15 do próximo mês
-                    if ultimo_recebimento.month == 12:
-                        proximo_recebimento = datetime(ultimo_recebimento.year + 1, 1, 15).date()
+                        dias_comuns[dia] = 1
+                
+                # Ordenar os dias de recebimento por frequência
+                dias_ordenados = sorted(dias_comuns.items(), key=lambda x: x[1], reverse=True)
+                
+                hoje = datetime.now().date()
+                mes_atual = hoje.month
+                ano_atual = hoje.year
+                
+                # Verificar se há um padrão claro de dias de recebimento
+                if dias_ordenados:
+                    # Pegar o dia mais comum de recebimento
+                    dia_mais_comum = dias_ordenados[0][0]
+                    
+                    # Verificar se o dia mais comum já passou neste mês
+                    if hoje.day >= dia_mais_comum:
+                        # Próximo recebimento será no próximo mês
+                        if mes_atual == 12:
+                            proximo_recebimento = datetime(ano_atual + 1, 1, dia_mais_comum).date()
+                        else:
+                            proximo_recebimento = datetime(ano_atual, mes_atual + 1, dia_mais_comum).date()
                     else:
-                        proximo_recebimento = datetime(ultimo_recebimento.year, ultimo_recebimento.month + 1, 15).date()
+                        # Próximo recebimento será ainda neste mês
+                        proximo_recebimento = datetime(ano_atual, mes_atual, dia_mais_comum).date()
+                    
+                    # Se houver um segundo dia comum de recebimento (padrão quinzenal)
+                    if len(dias_ordenados) > 1 and dias_ordenados[1][1] > 1:
+                        segundo_dia_comum = dias_ordenados[1][0]
+                        data_segundo_recebimento = None
+                        
+                        # Verificar se o segundo dia comum já passou neste mês
+                        if hoje.day >= segundo_dia_comum:
+                            # Segundo recebimento será no próximo mês
+                            if mes_atual == 12:
+                                data_segundo_recebimento = datetime(ano_atual + 1, 1, segundo_dia_comum).date()
+                            else:
+                                data_segundo_recebimento = datetime(ano_atual, mes_atual + 1, segundo_dia_comum).date()
+                        else:
+                            # Segundo recebimento será ainda neste mês
+                            data_segundo_recebimento = datetime(ano_atual, mes_atual, segundo_dia_comum).date()
+                        
+                        # Escolher a data mais próxima como próximo recebimento
+                        if data_segundo_recebimento and (proximo_recebimento is None or data_segundo_recebimento < proximo_recebimento):
+                            proximo_recebimento = data_segundo_recebimento
+            
+            # Se não conseguimos determinar um padrão, usar o último recebimento + 30 dias como estimativa
+            if proximo_recebimento is None and ultimos_recebimentos:
+                ultimo_recebimento = ultimos_recebimentos[0]  # Data mais recente
+                proximo_recebimento = ultimo_recebimento + timedelta(days=30)  # Estimativa de ciclo mensal
             
             # Calcular dias até o próximo recebimento
             dias_ate_proximo_recebimento = None
             if proximo_recebimento:
                 dias_ate_proximo_recebimento = (proximo_recebimento - hoje).days
-                
+            
             # Resumo
             summary = {
                 "status": "success",
