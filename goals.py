@@ -79,12 +79,12 @@ def show_goals_list():
                 
                 # Botão de atualizar valor
                 if st.button("💰 Atualizar Valor", key=f"update_amount_{goal['id']}"):
-                    st.session_state.updating_goal_amount = goal.to_dict()
+                    st.session_state.updating_goal_amount = dict(goal)
                     st.rerun()
                 
                 # Botão de editar
                 if st.button("✏️ Editar", key=f"edit_{goal['id']}"):
-                    st.session_state.editing_goal = goal.to_dict()
+                    st.session_state.editing_goal = dict(goal)
                     st.rerun()
                 
                 # Botão de excluir

@@ -195,7 +195,7 @@ class FinanceAssistant:
         try:
             # Fazer a chamada para a API
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4",
                 messages=[
                     {"role": "system", "content": self._get_system_prompt()},
                     {"role": "user", "content": user_message}

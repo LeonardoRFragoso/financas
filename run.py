@@ -125,8 +125,7 @@ def main():
     elif "Relatórios" in menu:
         show_reports()
     elif "Metas" in menu:
-        from ui import show_goals_page
-        show_goals_page()
+        show_goals()
     elif "Assistente" in menu:
         show_finance_assistant()
     
